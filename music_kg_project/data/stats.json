@@ -1,0 +1,17 @@
+{
+  "total_triples": 569708,
+  "unique_artists": 10316,
+  "unique_albums": 20728,
+  "unique_tracks": 26671,
+  "unique_genres": 6,
+  "named_graphs": {
+    "ontology": 101,
+    "artists": 71930,
+    "albums": 82912,
+    "tracks": 414765
+  },
+  "similarity_links": 30948,
+  "dbpedia_links": 10322,
+  "inference_triples_added": 51387,
+  "generated_at": "2026-03-14T12:46:01.615440+00:00"
+}
