@@ -25,9 +25,11 @@ urlpatterns = [
 
     # SPARQL
     path('sparql/',
-         views.SPARQLView.as_view(),           name='sparql'),
+         views.SPARQLView.as_view(),         name='sparql'),
+    path('sparql/update/',
+         views.SPARQLUpdateView.as_view(),   name='sparql-update'),
     path('sparql-templates/',
-         views.SPARQLTemplatesView.as_view(),  name='sparql-templates'),
+         views.SPARQLTemplatesView.as_view(), name='sparql-templates'),
 
     # Stats
     path('stats/',

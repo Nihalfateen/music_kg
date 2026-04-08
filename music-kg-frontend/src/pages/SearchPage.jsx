@@ -214,21 +214,21 @@ export default function SearchPage() {
           </div>
         </div>
 
-        {/* Year range */}
+        {/* Year range
         <DualSlider label="Year" min={1950} max={2024} step={1}
           value={yearRange} onChange={setYearRange}
           format={v => Math.round(v).toString()} />
 
         {/* Energy range */}
-        <DualSlider label="Energy" min={0} max={1} step={0.01}
-          value={energyRange} onChange={setEnergyRange} />
+        {/* <DualSlider label="Energy" min={0} max={1} step={0.01}
+          value={energyRange} onChange={setEnergyRange} /> */}
 
         {/* Danceability range */}
-        <DualSlider label="Danceability" min={0} max={1} step={0.01}
-          value={danceRange} onChange={setDanceRange} />
+        {/* <DualSlider label="Danceability" min={0} max={1} step={0.01} */}
+          {/* // value={danceRange} onChange={setDanceRange} /> */} 
 
         {/* Min popularity */}
-        <div className="mb-4">
+        {/* <div className="mb-4">
           <div className="flex justify-between text-xs text-text-muted mb-1">
             <span>Min Popularity</span>
             <span>{minPop}</span>
@@ -237,7 +237,7 @@ export default function SearchPage() {
             onChange={e => setMinPop(parseInt(e.target.value))}
             className="w-full accent-accent h-1"
           />
-        </div>
+        </div> */}
       </aside>
 
       {/* Main */}

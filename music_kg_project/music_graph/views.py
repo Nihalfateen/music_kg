@@ -54,8 +54,8 @@ class ArtistListView(APIView):
     def get(self, request):
         t0 = time.time()
         search = request.query_params.get("search", "").strip()
-        genre  = request.query_params.get("genre",  "").strip()
-        page   = int(request.query_params.get("page", 1))
+        genre = request.query_params.get("genre",  "").strip()
+        page = int(request.query_params.get("page", 1))
         page_size = int(request.query_params.get("page_size", 20))
         offset = (page - 1) * page_size
 
@@ -120,19 +120,19 @@ class TrackListView(APIView):
     def get(self, request):
         t0 = time.time()
         qp = request.query_params
-        page      = int(qp.get("page", 1))
+        page = int(qp.get("page", 1))
         page_size = int(qp.get("page_size", 20))
-        offset    = (page - 1) * page_size
+        offset = (page - 1) * page_size
 
         tracks = sq.get_tracks(
-            search     = qp.get("search")   or None,
-            genre      = qp.get("genre")    or None,
-            year_min   = qp.get("year_min") or None,
-            year_max   = qp.get("year_max") or None,
-            energy_min = qp.get("energy_min") or None,
-            energy_max = qp.get("energy_max") or None,
-            limit      = page_size,
-            offset     = offset,
+            search=qp.get("search") or None,
+            genre=qp.get("genre") or None,
+            year_min=qp.get("year_min") or None,
+            year_max=qp.get("year_max") or None,
+            energy_min=qp.get("energy_min") or None,
+            energy_max=qp.get("energy_max") or None,
+            limit=page_size,
+            offset=offset,
         )
         return _timed_response({
             "page":    page,
@@ -206,6 +206,65 @@ class SPARQLView(APIView):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# POST /api/sparql/update/
+# ─────────────────────────────────────────────────────────────────────────────
+
+class SPARQLUpdateView(APIView):
+    """
+    Execute SPARQL UPDATE operations (INSERT DATA, DELETE DATA, DELETE/INSERT WHERE).
+    POST body: {"update": "INSERT DATA { ... }"}
+
+    Examples:
+      INSERT DATA  — add new triples
+      DELETE DATA  — remove specific triples
+      DELETE WHERE — remove triples matching a pattern
+      DELETE { ?s ?p ?o } INSERT { ?s ?p ?new } WHERE { ... }  — modify triples
+    """
+
+    def post(self, request):
+        t0 = time.time()
+        update_string = request.data.get("update", "").strip()
+        if not update_string:
+            return Response(
+                {"error": "POST body must include 'update' field."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Detect operation type for logging
+        upper = update_string.upper().lstrip()
+        if upper.startswith("INSERT"):
+            op = "INSERT"
+        elif upper.startswith("DELETE"):
+            op = "DELETE"
+        elif upper.startswith("CLEAR"):
+            op = "CLEAR"
+        elif upper.startswith("DROP"):
+            op = "DROP"
+        else:
+            op = "UPDATE"
+
+        ok = store.execute_sparql_update(update_string)
+        elapsed = round((time.time() - t0) * 1000, 2)
+
+        if ok:
+            return Response({
+                "status":           "success",
+                "operation":        op,
+                "backend":          "GraphDB" if store.using_graphdb else "rdflib",
+                "execution_time_ms": elapsed,
+            })
+        else:
+            return Response(
+                {
+                    "error":     "SPARQL UPDATE failed",
+                    "operation": op,
+                    "execution_time_ms": elapsed,
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # GET /api/stats/
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -227,7 +286,7 @@ class TimelineView(APIView):
     def get(self, request, genre=None):
         t0 = time.time()
         start = int(request.query_params.get("start_year", 1950))
-        end   = int(request.query_params.get("end_year",   2024))
+        end = int(request.query_params.get("end_year",   2024))
 
         if genre:
             data = tl.get_genre_evolution(genre)
