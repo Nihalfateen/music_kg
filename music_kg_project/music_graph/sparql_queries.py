@@ -546,42 +546,51 @@ def _get_search_index() -> List[Dict]:
 
 def full_text_search(query: str, limit: int = 20) -> List[Dict]:
     """
-    Fast in-memory search. Index built once on startup via RDF triple iteration.
-    Each search is O(n) Python string scan — typically <200ms for 80k entries.
+    Live GraphDB search across artists, albums, tracks.
+    Reflects INSERT/DELETE immediately.
     """
     if not query or not query.strip():
         return []
 
-    q_lower = query.strip().lower()
-    index = _get_search_index()
+    safe = query.strip().replace('"', '\\"')
+
+    sparql_q = _PREFIXES + f"""
+    SELECT ?entity ?type
+    WHERE {{
+        GRAPH <http://musickg.org> {{
+            ?entity a ?type .
+            FILTER(CONTAINS(LCASE(STR(?entity)), LCASE("{safe}")))
+        }}
+    }}
+    LIMIT {limit}
+    """
+
+    rows = store.execute_sparql(sparql_q)
 
     results = []
-    for item in index:
-        if q_lower not in item["name_lower"]:
-            continue
-        n = item["name_lower"]
-        if n == q_lower:
-            score = 1.0
-        elif n.startswith(q_lower):
-            score = 0.7
+    for r in rows:
+        entity_uri = str(r["entity"])
+        rdf_type = str(r["type"])
+
+        if rdf_type.endswith("Artist"):
+            entity_type = "artist"
+        elif rdf_type.endswith("Album"):
+            entity_type = "album"
+        elif rdf_type.endswith("Track"):
+            entity_type = "track"
         else:
-            score = 0.4
+            entity_type = "entity"
 
         results.append({
-            "type":       item["type"],
-            "uri":        item["uri"],
-            "slug":       item["slug"],
-            "name":       item["name"],
-            "score":      score,
-            "extra_info": item["extra_info"],
+            "type": entity_type,
+            "uri": entity_uri,
+            "slug": _slug(entity_uri),
+            "name": _slug(entity_uri).replace("_", " "),
+            "score": 1.0,
+            "extra_info": {}
         })
 
-    results.sort(key=lambda x: (
-        -x["score"],
-        -(x["extra_info"].get("popularity") or 0),
-        x["name"],
-    ))
-    return results[:limit]
+    return results
 
 
 def _score(name: str, query: str) -> float:
@@ -733,43 +742,37 @@ _FORBIDDEN = re.compile(
 
 def execute_raw_sparql(query_string: str) -> dict:
     """
-    Execute a raw SELECT SPARQL query from the user.
-    Blocks modification queries. Returns columns, rows, timing.
+    Execute SPARQL query from user.
+    Supports SELECT + UPDATE queries.
     """
-    if _FORBIDDEN.search(query_string):
-        return {
-            "error": "Only SELECT queries are allowed.",
-            "columns": [],
-            "rows": [],
-            "execution_time_ms": 0,
-            "triple_count_scanned": 0,
-        }
-
-    if not re.search(r'\bSELECT\b', query_string, re.IGNORECASE):
-        return {
-            "error": "Query must be a SELECT statement.",
-            "columns": [],
-            "rows": [],
-            "execution_time_ms": 0,
-            "triple_count_scanned": 0,
-        }
-
     t0 = time.time()
     try:
         rows = store.execute_sparql(query_string)
+
         elapsed_ms = round((time.time() - t0) * 1000, 2)
-        columns = list(rows[0].keys()) if rows else []
+
+        # SELECT response
+        if isinstance(rows, list):
+            columns = list(rows[0].keys()) if rows else []
+            return {
+                "columns": columns,
+                "rows": rows,
+                "execution_time_ms": elapsed_ms,
+                "triple_count_scanned": 0,
+            }
+
+        # UPDATE response
         return {
-            "columns":              columns,
-            "rows":                 rows,
-            "execution_time_ms":    elapsed_ms,
-            "triple_count_scanned": len(store.graph),
+            "message": "SPARQL update executed successfully.",
+            "execution_time_ms": elapsed_ms,
+            "triple_count_scanned": 0,
         }
+
     except Exception as exc:
         return {
-            "error":                str(exc),
-            "columns":              [],
-            "rows":                 [],
-            "execution_time_ms":    round((time.time() - t0) * 1000, 2),
+            "error": str(exc),
+            "columns": [],
+            "rows": [],
+            "execution_time_ms": round((time.time() - t0) * 1000, 2),
             "triple_count_scanned": 0,
         }
