@@ -2,6 +2,9 @@ import { useState, useEffect, useRef } from 'react'
 import { motion } from 'framer-motion'
 import toast from 'react-hot-toast'
 import { postSparql, getSparqlTemplates } from '../api'
+import api from '../api'
+
+const UPDATE_KEYWORDS = /^\s*(INSERT|DELETE|CLEAR|DROP|CREATE|LOAD|COPY|MOVE|ADD)\b/i
 
 const DEFAULT_QUERY = `PREFIX music: <http://musickg.org/ontology#>
 PREFIX rdfs:  <http://www.w3.org/2000/01/rdf-schema#>
@@ -16,6 +19,14 @@ WHERE {
 ORDER BY DESC(?popularity)
 LIMIT 10`
 
+const DEFAULT_UPDATE = `PREFIX music: <http://musickg.org/ontology#>
+
+INSERT DATA {
+  <http://musickg.org/artist/Test_Artist>
+      a music:Artist ;
+      music:artistName "Test Artist" .
+}`
+
 function LineNumbers({ text }) {
   const lines = text.split('\n').length
   return (
@@ -28,12 +39,13 @@ function LineNumbers({ text }) {
 }
 
 export default function SPARQLEditorPage() {
-  const [query, setQuery]       = useState(DEFAULT_QUERY)
-  const [results, setResults]   = useState(null)
-  const [loading, setLoading]   = useState(false)
+  const [query, setQuery]         = useState(DEFAULT_QUERY)
+  const [results, setResults]     = useState(null)
+  const [loading, setLoading]     = useState(false)
   const [templates, setTemplates] = useState([])
-  const [sortCol, setSortCol]   = useState(null)
-  const [sortAsc, setSortAsc]   = useState(true)
+  const [sortCol, setSortCol]     = useState(null)
+  const [sortAsc, setSortAsc]     = useState(true)
+  const [mode, setMode]           = useState('select') // 'select' | 'update'
   const textareaRef = useRef(null)
 
   useEffect(() => {
@@ -42,21 +54,51 @@ export default function SPARQLEditorPage() {
       .catch(() => {})
   }, [])
 
+  // Auto-detect mode when query changes
+  useEffect(() => {
+    const stripped = query.replace(/^\s*(PREFIX[^\n]*\n)*/i, '').trim()
+    if (UPDATE_KEYWORDS.test(stripped)) {
+      setMode('update')
+    } else {
+      setMode('select')
+    }
+  }, [query])
+
   const runQuery = async () => {
     if (!query.trim()) return
     setLoading(true)
     setResults(null)
     try {
-      const res = await postSparql(query)
-      setResults(res.data)
-      if (res.data?.error) {
-        toast.error(res.data.error)
+      if (mode === 'update') {
+        // SPARQL UPDATE → /api/sparql/update/
+        const res = await api.post('/sparql/update/', { update: query })
+        if (res.data?.error) {
+          toast.error(res.data.error)
+          setResults({ error: res.data.error, rows: [], columns: [] })
+        } else {
+          toast.success(`✅ Update successful in ${res.data.execution_time_ms}ms`)
+          setResults({
+            update: true,
+            status: 'success',
+            backend: res.data.backend,
+            execution_time_ms: res.data.execution_time_ms,
+            rows: [], columns: [],
+          })
+        }
       } else {
-        toast.success(`${res.data.rows?.length || 0} rows in ${res.data.execution_time_ms}ms`)
+        // SPARQL SELECT → /api/sparql/
+        const res = await postSparql(query)
+        setResults(res.data)
+        if (res.data?.error) {
+          toast.error(res.data.error)
+        } else {
+          toast.success(`${res.data.rows?.length || 0} rows in ${res.data.execution_time_ms}ms`)
+        }
       }
     } catch (e) {
-      toast.error('Query failed — check your SPARQL syntax')
-      setResults({ error: e.response?.data?.error || 'Unknown error', rows: [], columns: [] })
+      const msg = e.response?.data?.error || 'Query failed — check your SPARQL syntax'
+      toast.error(msg)
+      setResults({ error: msg, rows: [], columns: [] })
     } finally {
       setLoading(false)
     }
@@ -108,17 +150,30 @@ export default function SPARQLEditorPage() {
   }) : []
 
   const SAMPLE_QUERIES = [
-    { label: 'All artists in Pop', query: `PREFIX music: <http://musickg.org/ontology#>\nPREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>\n\nSELECT DISTINCT ?name WHERE {\n  ?uri a music:Artist ; music:artistName ?name .\n  ?track music:performedBy ?uri ; music:inGenre ?g .\n  ?g rdfs:label "pop" .\n} LIMIT 20` },
-    { label: 'High energy tracks', query: `PREFIX music: <http://musickg.org/ontology#>\n\nSELECT ?name ?energy WHERE {\n  ?t a music:Track ; music:trackName ?name ;\n     music:hasAudioFeatures ?af .\n  ?af music:energy ?energy .\n  FILTER (?energy > 0.9)\n} ORDER BY DESC(?energy) LIMIT 20` },
-    { label: 'Genre stats', query: `PREFIX music: <http://musickg.org/ontology#>\nPREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>\n\nSELECT ?genre (COUNT(?t) AS ?tracks) WHERE {\n  ?g a music:Genre ; rdfs:label ?genre .\n  ?t music:inGenre ?g .\n} GROUP BY ?genre ORDER BY DESC(?tracks)` },
+    { label: '▶ Top artists by popularity', query: `PREFIX music: <http://musickg.org/ontology#>\nPREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>\n\nSELECT DISTINCT ?name WHERE {\n  ?uri a music:Artist ; music:artistName ?name .\n  ?track music:performedBy ?uri ; music:inGenre <http://musickg.org/genre/pop> .\n} LIMIT 20` },
+    { label: '▶ High energy tracks', query: `PREFIX music: <http://musickg.org/ontology#>\n\nSELECT ?name ?energy WHERE {\n  ?t a music:Track ; music:trackName ?name ;\n     music:hasAudioFeatures ?af .\n  ?af music:energy ?energy .\n  FILTER (?energy > 0.9)\n} ORDER BY DESC(?energy) LIMIT 20` },
+    { label: '▶ Genre stats', query: `PREFIX music: <http://musickg.org/ontology#>\nPREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>\n\nSELECT ?genre (COUNT(?t) AS ?tracks) WHERE {\n  ?g a music:Genre ; rdfs:label ?genre .\n  ?t music:inGenre ?g .\n} GROUP BY ?genre ORDER BY DESC(?tracks)` },
+    { label: '✏️ INSERT artist', query: `PREFIX music: <http://musickg.org/ontology#>\n\nINSERT DATA {\n  <http://musickg.org/artist/Test_Artist>\n      a music:Artist ;\n      music:artistName "Test Artist" .\n}` },
+    { label: '✏️ DELETE artist', query: `PREFIX music: <http://musickg.org/ontology#>\n\nDELETE DATA {\n  <http://musickg.org/artist/Test_Artist>\n      a music:Artist ;\n      music:artistName "Test Artist" .\n}` },
+    { label: '✏️ UPDATE artist name', query: `PREFIX music: <http://musickg.org/ontology#>\n\nDELETE {\n  <http://musickg.org/artist/Test_Artist> music:artistName ?old\n}\nINSERT {\n  <http://musickg.org/artist/Test_Artist> music:artistName "Updated Name"\n}\nWHERE {\n  <http://musickg.org/artist/Test_Artist> music:artistName ?old\n}` },
   ]
 
   return (
     <div className="max-w-7xl mx-auto px-6 py-8">
-      <motion.h1 className="text-3xl font-extrabold text-text-primary mb-6"
-        initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}>
-        SPARQL Editor
-      </motion.h1>
+      <div className="flex items-center gap-3 mb-6">
+        <motion.h1 className="text-3xl font-extrabold text-text-primary"
+          initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}>
+          SPARQL Editor
+        </motion.h1>
+        {/* Auto-detected mode badge */}
+        <span className={`px-3 py-1 rounded-full text-xs font-bold ${
+          mode === 'update'
+            ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
+            : 'bg-blue-500/20 text-blue-400 border border-blue-500/30'
+        }`}>
+          {mode === 'update' ? '✏️ UPDATE mode' : '🔍 SELECT mode'}
+        </span>
+      </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
         {/* Editor — 60% */}
@@ -189,66 +244,72 @@ export default function SPARQLEditorPage() {
 
         {/* Results — 40% */}
         <div className="lg:col-span-2 flex flex-col gap-3">
-          {results ? (
-            <>
-              {results.error ? (
-                <div className="bg-red-950/30 border border-red-800/50 rounded-card p-4">
-                  <p className="text-xs font-semibold text-red-400 mb-1">Query Error</p>
-                  <p className="text-xs text-red-300 font-mono">{results.error}</p>
-                </div>
-              ) : (
-                <>
-                  <div className="flex items-center justify-between">
-                    <p className="text-xs text-text-muted">
-                      <span className="text-accent font-semibold">{sortedRows.length}</span> rows
-                      {results.execution_time_ms && (
-                        <span className="ml-2">· {results.execution_time_ms}ms</span>
-                      )}
-                    </p>
-                    <div className="flex gap-1">
-                      <button onClick={exportCSV} className="px-2 py-1 text-xs bg-bg-card border border-border-col rounded hover:border-accent text-text-secondary hover:text-accent transition-all">CSV</button>
-                      <button onClick={exportJSON} className="px-2 py-1 text-xs bg-bg-card border border-border-col rounded hover:border-accent text-text-secondary hover:text-accent transition-all">JSON</button>
-                    </div>
-                  </div>
-
-                  <div className="bg-bg-card border border-border-col rounded-card overflow-auto" style={{ maxHeight: 480 }}>
-                    <table className="w-full text-xs">
-                      <thead className="sticky top-0 bg-bg-secondary border-b border-border-col">
-                        <tr>
-                          {results.columns?.map(col => (
-                            <th key={col}
-                              onClick={() => { setSortCol(col); setSortAsc(sortCol === col ? !sortAsc : true) }}
-                              className="text-left px-3 py-2 text-text-muted uppercase tracking-wider cursor-pointer hover:text-accent transition-colors whitespace-nowrap">
-                              {col} {sortCol === col ? (sortAsc ? '↑' : '↓') : ''}
-                            </th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {sortedRows.map((row, i) => (
-                          <tr key={i} className="border-b border-border-col/30 hover:bg-bg-hover transition-colors">
-                            {results.columns?.map(col => (
-                              <td key={col} className="px-3 py-2 text-text-secondary font-mono max-w-48 truncate">
-                                {row[col] != null ? String(row[col]) : <span className="text-text-muted">—</span>}
-                              </td>
-                            ))}
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                    {sortedRows.length === 0 && (
-                      <p className="text-center text-text-muted text-xs py-8">No results</p>
-                    )}
-                  </div>
-                </>
-              )}
-            </>
-          ) : (
+          {!results ? (
             <div className="flex flex-col items-center justify-center h-64 text-center bg-bg-card border border-border-col rounded-card">
               <div className="text-4xl mb-3 opacity-30">⚡</div>
               <p className="text-sm text-text-muted">Run a query to see results</p>
               <p className="text-xs text-text-muted mt-1">Press Ctrl+Enter or click Run</p>
             </div>
+          ) : results.error ? (
+            <div className="bg-red-950/30 border border-red-800/50 rounded-card p-4">
+              <p className="text-xs font-semibold text-red-400 mb-1">Query Error</p>
+              <p className="text-xs text-red-300 font-mono">{results.error}</p>
+            </div>
+          ) : results.update ? (
+            <div className="bg-green-950/30 border border-green-800/50 rounded-card p-6 text-center">
+              <div className="text-4xl mb-3">✅</div>
+              <p className="text-sm font-bold text-green-400 mb-2">Update Successful</p>
+              <p className="text-xs text-text-muted">Completed in {results.execution_time_ms}ms</p>
+              {results.backend && (
+                <p className="text-xs text-text-muted mt-1">
+                  Backend: <span className="text-accent">{results.backend}</span>
+                </p>
+              )}
+            </div>
+          ) : (
+            <>
+              <div className="flex items-center justify-between">
+                <p className="text-xs text-text-muted">
+                  <span className="text-accent font-semibold">{sortedRows.length}</span> rows
+                  {results.execution_time_ms && (
+                    <span className="ml-2">· {results.execution_time_ms}ms</span>
+                  )}
+                </p>
+                <div className="flex gap-1">
+                  <button onClick={exportCSV} className="px-2 py-1 text-xs bg-bg-card border border-border-col rounded hover:border-accent text-text-secondary hover:text-accent transition-all">CSV</button>
+                  <button onClick={exportJSON} className="px-2 py-1 text-xs bg-bg-card border border-border-col rounded hover:border-accent text-text-secondary hover:text-accent transition-all">JSON</button>
+                </div>
+              </div>
+              <div className="bg-bg-card border border-border-col rounded-card overflow-auto" style={{ maxHeight: 480 }}>
+                <table className="w-full text-xs">
+                  <thead className="sticky top-0 bg-bg-secondary border-b border-border-col">
+                    <tr>
+                      {results.columns?.map(col => (
+                        <th key={col}
+                          onClick={() => { setSortCol(col); setSortAsc(sortCol === col ? !sortAsc : true) }}
+                          className="text-left px-3 py-2 text-text-muted uppercase tracking-wider cursor-pointer hover:text-accent transition-colors whitespace-nowrap">
+                          {col} {sortCol === col ? (sortAsc ? '↑' : '↓') : ''}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {sortedRows.map((row, i) => (
+                      <tr key={i} className="border-b border-border-col/30 hover:bg-bg-hover transition-colors">
+                        {results.columns?.map(col => (
+                          <td key={col} className="px-3 py-2 text-text-secondary font-mono max-w-48 truncate">
+                            {row[col] != null ? String(row[col]) : <span className="text-text-muted">—</span>}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {sortedRows.length === 0 && (
+                  <p className="text-center text-text-muted text-xs py-8">No results</p>
+                )}
+              </div>
+            </>
           )}
         </div>
       </div>

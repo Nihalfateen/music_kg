@@ -733,12 +733,13 @@ _FORBIDDEN = re.compile(
 
 def execute_raw_sparql(query_string: str) -> dict:
     """
-    Execute a raw SELECT SPARQL query from the user.
-    Blocks modification queries. Returns columns, rows, timing.
+    Execute a raw SELECT SPARQL query from the SPARQL Editor.
+    Blocks modification queries (use /api/sparql/update/ for those).
+    Returns columns, rows, timing.
     """
     if _FORBIDDEN.search(query_string):
         return {
-            "error": "Only SELECT queries are allowed.",
+            "error": "Modification queries (INSERT/DELETE/UPDATE) are not allowed here. Use POST /api/sparql/update/ instead.",
             "columns": [],
             "rows": [],
             "execution_time_ms": 0,
@@ -759,11 +760,14 @@ def execute_raw_sparql(query_string: str) -> dict:
         rows = store.execute_sparql(query_string)
         elapsed_ms = round((time.time() - t0) * 1000, 2)
         columns = list(rows[0].keys()) if rows else []
+        # Get triple count from stats instead of store.graph (GraphDB-safe)
+        triple_count = store.get_stats().get("graph_triples_live",
+                                             store.get_stats().get("triples", 0))
         return {
             "columns":              columns,
             "rows":                 rows,
             "execution_time_ms":    elapsed_ms,
-            "triple_count_scanned": len(store.graph),
+            "triple_count_scanned": triple_count,
         }
     except Exception as exc:
         return {
@@ -773,3 +777,40 @@ def execute_raw_sparql(query_string: str) -> dict:
             "execution_time_ms":    round((time.time() - t0) * 1000, 2),
             "triple_count_scanned": 0,
         }
+
+
+def execute_raw_sparql_update(update_string: str) -> dict:
+    """
+    Execute a SPARQL UPDATE operation from the SPARQL Editor.
+    Allows INSERT DATA, DELETE DATA, DELETE/INSERT WHERE, CLEAR, DROP.
+    Returns status and timing.
+    """
+    # Must contain an UPDATE keyword
+    if not _FORBIDDEN.search(update_string):
+        return {
+            "error": "Not a valid SPARQL UPDATE statement. Expected INSERT, DELETE, CLEAR, or DROP.",
+            "execution_time_ms": 0,
+        }
+
+    # Block SELECT in update endpoint
+    if re.search(r'\bSELECT\b', update_string, re.IGNORECASE) and \
+       not _FORBIDDEN.search(update_string):
+        return {
+            "error": "Use POST /api/sparql/ for SELECT queries.",
+            "execution_time_ms": 0,
+        }
+
+    t0 = time.time()
+    ok = store.execute_sparql_update(update_string)
+    elapsed_ms = round((time.time() - t0) * 1000, 2)
+
+    if ok:
+        return {
+            "status":           "success",
+            "execution_time_ms": elapsed_ms,
+            "backend":          "GraphDB" if store.using_graphdb else "rdflib",
+        }
+    return {
+        "error":            "SPARQL UPDATE failed — check server logs for details.",
+        "execution_time_ms": elapsed_ms,
+    }

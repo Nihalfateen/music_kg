@@ -213,12 +213,6 @@ class SPARQLUpdateView(APIView):
     """
     Execute SPARQL UPDATE operations (INSERT DATA, DELETE DATA, DELETE/INSERT WHERE).
     POST body: {"update": "INSERT DATA { ... }"}
-
-    Examples:
-      INSERT DATA  — add new triples
-      DELETE DATA  — remove specific triples
-      DELETE WHERE — remove triples matching a pattern
-      DELETE { ?s ?p ?o } INSERT { ?s ?p ?new } WHERE { ... }  — modify triples
     """
 
     def post(self, request):
@@ -230,38 +224,10 @@ class SPARQLUpdateView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        # Detect operation type for logging
-        upper = update_string.upper().lstrip()
-        if upper.startswith("INSERT"):
-            op = "INSERT"
-        elif upper.startswith("DELETE"):
-            op = "DELETE"
-        elif upper.startswith("CLEAR"):
-            op = "CLEAR"
-        elif upper.startswith("DROP"):
-            op = "DROP"
-        else:
-            op = "UPDATE"
-
-        ok = store.execute_sparql_update(update_string)
-        elapsed = round((time.time() - t0) * 1000, 2)
-
-        if ok:
-            return Response({
-                "status":           "success",
-                "operation":        op,
-                "backend":          "GraphDB" if store.using_graphdb else "rdflib",
-                "execution_time_ms": elapsed,
-            })
-        else:
-            return Response(
-                {
-                    "error":     "SPARQL UPDATE failed",
-                    "operation": op,
-                    "execution_time_ms": elapsed,
-                },
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+        result = sq.execute_raw_sparql_update(update_string)
+        if "error" in result:
+            return Response(result, status=status.HTTP_400_BAD_REQUEST)
+        return Response(result)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
