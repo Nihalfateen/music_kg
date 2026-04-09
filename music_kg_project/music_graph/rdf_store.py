@@ -16,14 +16,14 @@ from rdflib import Namespace
 from rdflib.namespace import RDF, RDFS, OWL, XSD
 
 # ── Namespaces (kept at module level for backward compatibility) ──────────────
-BASE = Namespace("http://musickg.org/")
-MUSIC = Namespace("http://musickg.org/ontology#")
+BASE   = Namespace("http://musickg.org/")
+MUSIC  = Namespace("http://musickg.org/ontology#")
 SCHEMA = Namespace("http://schema.org/")
 
 log = logging.getLogger(__name__)
 
 # GraphDB defaults
-GRAPHDB_URL = "http://localhost:7200"
+GRAPHDB_URL        = "http://localhost:7200"
 GRAPHDB_REPOSITORY = "music-kg"
 
 
@@ -35,11 +35,11 @@ class _RDFStore:
     """
 
     def __init__(self):
-        self._stats:        dict = {}
-        self._loaded:       bool = False
-        self._use_graphdb:  bool = False
-        self._sparql_url:   str = ""
-        self._update_url:   str = ""
+        self._stats:        dict  = {}
+        self._loaded:       bool  = False
+        self._use_graphdb:  bool  = False
+        self._sparql_url:   str   = ""
+        self._update_url:   str   = ""
         # rdflib fallback
         self._graph = None
 
@@ -89,8 +89,8 @@ class _RDFStore:
         Returns True if GraphDB is ready to use.
         """
         repo_url = f"{GRAPHDB_URL}/repositories/{GRAPHDB_REPOSITORY}"
-        self._sparql_url = repo_url
-        self._update_url = f"{repo_url}/statements"
+        self._sparql_url  = repo_url
+        self._update_url  = f"{repo_url}/statements"
 
         try:
             # Ping GraphDB
@@ -104,8 +104,7 @@ class _RDFStore:
 
             repos = [rep.get("id") for rep in r.json()]
             if GRAPHDB_REPOSITORY not in repos:
-                log.info(
-                    f"GraphDB repository '{GRAPHDB_REPOSITORY}' not found — creating it.")
+                log.info(f"GraphDB repository '{GRAPHDB_REPOSITORY}' not found — creating it.")
                 if not self._create_repository():
                     return False
 
@@ -118,8 +117,7 @@ class _RDFStore:
                 count = self._graphdb_triple_count()
 
             self._use_graphdb = True
-            log.info(
-                f"GraphDB ready — {count:,} triples in '{GRAPHDB_REPOSITORY}'")
+            log.info(f"GraphDB ready — {count:,} triples in '{GRAPHDB_REPOSITORY}'")
             return True
 
         except requests.exceptions.ConnectionError:
@@ -209,13 +207,12 @@ class _RDFStore:
                 timeout=30,
             )
             if r.status_code != 200:
-                log.warning(
-                    f"GraphDB SPARQL returned {r.status_code}: {r.text[:200]}")
+                log.warning(f"GraphDB SPARQL returned {r.status_code}: {r.text[:200]}")
                 return []
 
-            data = r.json()
-            vars_ = data["results"]["bindings"] and data["head"]["vars"]
-            rows = []
+            data    = r.json()
+            vars_   = data["results"]["bindings"] and data["head"]["vars"]
+            rows    = []
             for binding in data["results"]["bindings"]:
                 record = {}
                 for var in data["head"]["vars"]:
@@ -227,15 +224,11 @@ class _RDFStore:
                         typ = node.get("datatype", "")
                         # Cast numerics
                         if "integer" in typ or "int" in typ:
-                            try:
-                                raw = int(raw)
-                            except:
-                                pass
+                            try: raw = int(raw)
+                            except: pass
                         elif "decimal" in typ or "float" in typ or "double" in typ:
-                            try:
-                                raw = float(raw)
-                            except:
-                                pass
+                            try: raw = float(raw)
+                            except: pass
                         record[var] = raw
                 rows.append(record)
             return rows
@@ -249,8 +242,8 @@ class _RDFStore:
         from rdflib import ConjunctiveGraph, Namespace
         from rdflib.namespace import OWL
 
-        BASE = Namespace("http://musickg.org/")
-        MUSIC = Namespace("http://musickg.org/ontology#")
+        BASE   = Namespace("http://musickg.org/")
+        MUSIC  = Namespace("http://musickg.org/ontology#")
         SCHEMA = Namespace("http://schema.org/")
 
         if not nt_path.exists():
@@ -296,21 +289,7 @@ class _RDFStore:
         """
         Execute a SPARQL UPDATE operation (INSERT DATA, DELETE DATA,
         DELETE/INSERT WHERE, CLEAR, DROP, …).
-
-        Returns True on success, False on failure.
-
-        GraphDB mode  → POST to /repositories/{repo}/statements
-        rdflib mode   → graph.update()
-
-        Example:
-            store.execute_sparql_update('''
-                PREFIX music: <http://musickg.org/ontology#>
-                INSERT DATA {
-                    <http://musickg.org/artist/New_Artist>
-                        a music:Artist ;
-                        music:artistName "New Artist" .
-                }
-            ''')
+        Automatically invalidates the in-memory search index after success.
         """
         t0 = time.time()
         try:
@@ -321,10 +300,97 @@ class _RDFStore:
         except Exception as e:
             log.warning(f"SPARQL UPDATE error: {e}")
             return False
+
         elapsed_ms = (time.time() - t0) * 1000
         log.info(f"SPARQL UPDATE ({('GraphDB' if self._use_graphdb else 'rdflib')}) "
                  f"→ {'OK' if ok else 'FAILED'} in {elapsed_ms:.1f}ms")
+
+        # Update the in-memory search index to reflect the change
+        if ok:
+            try:
+                self._patch_index_from_update(update_string)
+            except Exception as e:
+                # Fallback: full invalidation
+                try:
+                    from music_graph import sparql_queries as _sq
+                    _sq._search_index  = None
+                    _sq._index_ready   = False
+                    _sq._index_building = False
+                    log.info("Search index invalidated (fallback).")
+                except Exception:
+                    pass
+                log.warning(f"Index patch failed, invalidated instead: {e}")
+
         return ok
+
+    def _patch_index_from_update(self, update_string: str) -> None:
+        """
+        Parse a simple SPARQL UPDATE and patch the search index directly.
+        Handles INSERT DATA and DELETE DATA with artistName / trackName / albumName.
+        Falls back to full invalidation for complex queries.
+        """
+        import re as _re
+        from music_graph import sparql_queries as _sq
+
+        upper = update_string.upper()
+        is_insert = "INSERT" in upper
+        is_delete = "DELETE" in upper
+        operation = "add" if is_insert and not is_delete else "remove"
+
+        # Extract triples block from INSERT DATA { ... } or DELETE DATA { ... }
+        block_match = _re.search(r'\{(.*?)\}', update_string, _re.DOTALL)
+        if not block_match:
+            # Complex query — full invalidation
+            _sq._search_index  = None
+            _sq._index_ready   = False
+            _sq._index_building = False
+            return
+
+        block = block_match.group(1)
+
+        # Try to extract subject URI
+        subj_match = _re.search(r'<(http://musickg\.org/[^>]+)>', block)
+        if not subj_match:
+            _sq._search_index = None
+            _sq._index_ready  = False
+            _sq._index_building = False
+            return
+
+        uri = subj_match.group(1)
+
+        # Determine entity type
+        if "/artist/" in uri:
+            entity_type = "artist"
+            name_prop   = "artistName"
+        elif "/track/" in uri:
+            entity_type = "track"
+            name_prop   = "trackName"
+        elif "/album/" in uri:
+            entity_type = "album"
+            name_prop   = "albumName"
+        else:
+            # Unknown type — full invalidation
+            _sq._search_index = None
+            _sq._index_ready  = False
+            _sq._index_building = False
+            return
+
+        # Extract name from triple: music:artistName "Name"
+        name_match = _re.search(
+            rf'music:{name_prop}\s+"([^"]+)"', block, _re.IGNORECASE
+        ) or _re.search(
+            rf':{name_prop}\s+"([^"]+)"', block, _re.IGNORECASE
+        )
+
+        if not name_match:
+            # Can't determine name — full invalidation
+            _sq._search_index = None
+            _sq._index_ready  = False
+            _sq._index_building = False
+            return
+
+        name = name_match.group(1)
+        _sq.patch_search_index(operation, entity_type, uri, name)
 
     def _update_via_http(self, update_string: str) -> bool:
         """Send SPARQL UPDATE to GraphDB /statements endpoint."""
@@ -337,8 +403,7 @@ class _RDFStore:
             )
             if r.status_code in (200, 204):
                 return True
-            log.warning(
-                f"GraphDB UPDATE returned {r.status_code}: {r.text[:200]}")
+            log.warning(f"GraphDB UPDATE returned {r.status_code}: {r.text[:200]}")
             return False
         except Exception as e:
             log.warning(f"GraphDB UPDATE HTTP error: {e}")
@@ -383,8 +448,8 @@ class _RDFStore:
         stats = dict(self._stats)
         stats["backend"] = "GraphDB" if self._use_graphdb else "rdflib"
         if self._use_graphdb:
-            stats["graphdb_url"] = GRAPHDB_URL
-            stats["repository"] = GRAPHDB_REPOSITORY
+            stats["graphdb_url"]  = GRAPHDB_URL
+            stats["repository"]   = GRAPHDB_REPOSITORY
         elif self._graph:
             stats["graph_triples_live"] = len(self._graph)
         return stats

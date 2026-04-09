@@ -200,21 +200,21 @@ def get_artist_detail(artist_slug: str) -> Optional[Dict]:
         }
         top_tracks.append(t)
         if r.get("energy") is not None:
-            energy_sum += float(r["energy"])
-            dance_sum += float(r["danceability"])
-            val_sum += float(r["valence"])
-            tempo_sum += float(r["tempo"])
-            loud_sum += float(r["loudness"])
-            feat_count += 1
+            energy_sum  += float(r["energy"])
+            dance_sum   += float(r["danceability"])
+            val_sum     += float(r["valence"])
+            tempo_sum   += float(r["tempo"])
+            loud_sum    += float(r["loudness"])
+            feat_count  += 1
 
     avg_features = None
     if feat_count:
         avg_features = {
-            "energy":       round(energy_sum / feat_count, 4),
-            "danceability": round(dance_sum / feat_count, 4),
-            "valence":      round(val_sum / feat_count, 4),
-            "tempo":        round(tempo_sum / feat_count, 4),
-            "loudness":     round(loud_sum / feat_count, 4),
+            "energy":       round(energy_sum  / feat_count, 4),
+            "danceability": round(dance_sum   / feat_count, 4),
+            "valence":      round(val_sum     / feat_count, 4),
+            "tempo":        round(tempo_sum   / feat_count, 4),
+            "loudness":     round(loud_sum    / feat_count, 4),
         }
 
     # Similar artists
@@ -225,8 +225,7 @@ def get_artist_detail(artist_slug: str) -> Optional[Dict]:
     }} LIMIT 10
     """
     similar = [
-        {"uri": str(r["simUri"]), "slug": _slug(
-            str(r["simUri"])), "name": str(r["simName"])}
+        {"uri": str(r["simUri"]), "slug": _slug(str(r["simUri"])), "name": str(r["simName"])}
         for r in store.execute_sparql(similar_q)
     ]
 
@@ -334,8 +333,7 @@ def get_tracks(
     filters = []
     if search:
         safe = search.replace('"', '\\"')
-        filters.append(
-            f'FILTER (contains(lcase(str(?trackName)), lcase("{safe}")))')
+        filters.append(f'FILTER (contains(lcase(str(?trackName)), lcase("{safe}")))')
     if energy_min is not None:
         filters.append(f"FILTER (?energy >= {float(energy_min)})")
     if energy_max is not None:
@@ -412,17 +410,13 @@ def get_tracks(
 # ─────────────────────────────────────────────────────────────────────────────
 
 _search_index: Optional[List[Dict]] = None
-_index_ready = False
+_index_ready  = False
 _index_building = False
 
 
 def _build_search_index() -> List[Dict]:
     """Build search index from CSV — fast (~1s), includes genres per artist."""
-    import time as _time
-    import logging as _lm
-    import csv as _csv
-    import hashlib as _hs
-    import os as _os
+    import time as _time, logging as _lm, csv as _csv, hashlib as _hs, os as _os
     from urllib.parse import quote as _q
     _log = _lm.getLogger(__name__)
     t0 = _time.time()
@@ -447,7 +441,7 @@ def _build_search_index() -> List[Dict]:
     _log.info(f"Building search index from {csv_path}")
 
     def _make_id(t): return _hs.md5(t.encode()).hexdigest()[:12]
-    def _aslug(n): return _q(n.strip().replace(" ", "_"), safe="")
+    def _aslug(n):   return _q(n.strip().replace(" ", "_"), safe="")
 
     index: List[Dict] = []
     seen_artists: set = set()
@@ -457,15 +451,13 @@ def _build_search_index() -> List[Dict]:
     try:
         with open(csv_path, encoding="latin-1", newline="") as f:
             for row in _csv.DictReader(f):
-                tid = (row.get("track_id") or "").strip()
+                tid   = (row.get("track_id") or "").strip()
                 tname = (row.get("track_name") or "").strip()
                 aname = (row.get("track_artist") or "").strip()
-                alname = (row.get("track_album_name") or "").strip()
+                alname= (row.get("track_album_name") or "").strip()
                 genre = (row.get("playlist_genre") or "").strip().lower()
-                try:
-                    pop = int(float(row.get("track_popularity") or 0))
-                except:
-                    pop = 0
+                try: pop = int(float(row.get("track_popularity") or 0))
+                except: pop = 0
 
                 if not tname or not aname:
                     continue
@@ -473,7 +465,7 @@ def _build_search_index() -> List[Dict]:
                 if aname not in seen_artists:
                     seen_artists.add(aname)
                     slug = _aslug(aname)
-                    pos = len(index)
+                    pos  = len(index)
                     artist_pos[aname] = pos
                     index.append({
                         "type": "artist",
@@ -492,12 +484,10 @@ def _build_search_index() -> List[Dict]:
                 if alname and al_key not in seen_albums:
                     seen_albums.add(al_key)
                     aid = _make_id(al_key)
-                    rd = (row.get("track_album_release_date") or "")
-                    yr = None
-                    try:
-                        yr = int(rd[:4])
-                    except:
-                        pass
+                    rd  = (row.get("track_album_release_date") or "")
+                    yr  = None
+                    try: yr = int(rd[:4])
+                    except: pass
                     index.append({
                         "type": "album",
                         "uri":  f"http://musickg.org/album/{aid}",
@@ -517,10 +507,8 @@ def _build_search_index() -> List[Dict]:
         _log.error(f"Search index build error: {e}")
         return []
 
-    _log.info(
-        f"Search index built: {len(index):,} entries in {_time.time()-t0:.2f}s")
+    _log.info(f"Search index built: {len(index):,} entries in {_time.time()-t0:.2f}s")
     return index
-
 
 def build_search_index_async() -> None:
     """Build index synchronously at startup — fast enough (< 1s from CSV)."""
@@ -528,8 +516,8 @@ def build_search_index_async() -> None:
     if _index_ready:
         return
     _index_building = True
-    _search_index = _build_search_index()
-    _index_ready = True
+    _search_index   = _build_search_index()
+    _index_ready    = True
     _index_building = False
 
 
@@ -538,6 +526,47 @@ def _get_search_index() -> List[Dict]:
     if not _index_ready:
         build_search_index_async()
     return _search_index or []
+
+
+def patch_search_index(operation: str, entity_type: str, uri: str,
+                       name: str, extra_info: dict = None) -> None:
+    """
+    Patch the in-memory search index after a SPARQL UPDATE — no full rebuild needed.
+
+    operation:   'add' | 'remove'
+    entity_type: 'artist' | 'album' | 'track'
+    uri:         full URI string
+    name:        display name
+    extra_info:  optional dict (genres, year, artist, popularity…)
+
+    Called automatically by rdf_store after execute_sparql_update
+    when the caller provides entity hints — otherwise falls back
+    to full index invalidation.
+    """
+    global _search_index, _index_ready
+    if not _index_ready or _search_index is None:
+        return  # index not built yet — next search will rebuild anyway
+
+    slug = uri.rstrip("/").split("/")[-1]
+
+    if operation == "add":
+        # Remove existing entry with same URI first (avoid duplicates)
+        _search_index = [e for e in _search_index if e["uri"] != uri]
+        _search_index.append({
+            "type":       entity_type,
+            "uri":        uri,
+            "slug":       slug,
+            "name":       name,
+            "name_lower": name.lower(),
+            "extra_info": extra_info or {},
+        })
+        log.info(f"Search index: added {entity_type} '{name}'")
+
+    elif operation == "remove":
+        before = len(_search_index)
+        _search_index = [e for e in _search_index if e["uri"] != uri]
+        removed = before - len(_search_index)
+        log.info(f"Search index: removed {removed} entries for URI {uri}")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -553,19 +582,16 @@ def full_text_search(query: str, limit: int = 20) -> List[Dict]:
         return []
 
     q_lower = query.strip().lower()
-    index = _get_search_index()
+    index   = _get_search_index()
 
     results = []
     for item in index:
         if q_lower not in item["name_lower"]:
             continue
         n = item["name_lower"]
-        if n == q_lower:
-            score = 1.0
-        elif n.startswith(q_lower):
-            score = 0.7
-        else:
-            score = 0.4
+        if n == q_lower:           score = 1.0
+        elif n.startswith(q_lower): score = 0.7
+        else:                       score = 0.4
 
         results.append({
             "type":       item["type"],
@@ -586,10 +612,8 @@ def full_text_search(query: str, limit: int = 20) -> List[Dict]:
 
 def _score(name: str, query: str) -> float:
     n, q = name.lower(), query.lower()
-    if n == q:
-        return 1.0
-    if n.startswith(q):
-        return 0.7
+    if n == q:          return 1.0
+    if n.startswith(q): return 0.7
     return 0.4
 
 
@@ -663,10 +687,8 @@ def get_audio_distribution() -> dict:
         "energy":       ("?af music:energy ?val",       0.0,   1.0),
         "danceability": ("?af music:danceability ?val", 0.0,   1.0),
         "valence":      ("?af music:valence ?val",      0.0,   1.0),
-        # normalised
-        "tempo":        ("?af music:tempo ?val",        0.0,   1.0),
-        # normalised
-        "loudness":     ("?af music:loudness ?val",     0.0,   1.0),
+        "tempo":        ("?af music:tempo ?val",        0.0,   1.0),   # normalised
+        "loudness":     ("?af music:loudness ?val",     0.0,   1.0),   # normalised
     }
 
     result = {}
@@ -762,7 +784,7 @@ def execute_raw_sparql(query_string: str) -> dict:
         columns = list(rows[0].keys()) if rows else []
         # Get triple count from stats instead of store.graph (GraphDB-safe)
         triple_count = store.get_stats().get("graph_triples_live",
-                                             store.get_stats().get("triples", 0))
+                       store.get_stats().get("triples", 0))
         return {
             "columns":              columns,
             "rows":                 rows,
