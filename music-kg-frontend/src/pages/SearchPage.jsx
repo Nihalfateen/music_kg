@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import {useNavigate, useSearchParams} from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import toast from 'react-hot-toast'
 import { searchAll, getArtists } from '../api'
@@ -38,6 +38,8 @@ function DualSlider({ min, max, step = 0.01, value, onChange, label, format = v 
 
 export default function SearchPage() {
   const [params, setParams] = useSearchParams()
+
+  const navigate = useNavigate()
 
   const [q, setQ]               = useState(params.get('q') || '')
   const [results, setResults]   = useState([])
@@ -328,14 +330,10 @@ export default function SearchPage() {
             <AddArtistModal
               initialName={q}
               onClose={() => setShowAddModal(false)}
-<<<<<<< Updated upstream
               onSuccess={(slug) => {
                 setShowAddModal(false)
-                navigate(`/artists/${slug}`)
+                navigate(`/artist/${slug}`)
               }}
-=======
-              onSuccess={(slug) => navigate(`/artists/${slug}`)}
->>>>>>> Stashed changes
             />
         )}
       </div>

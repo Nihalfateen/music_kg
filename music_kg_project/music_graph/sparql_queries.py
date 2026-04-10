@@ -828,7 +828,13 @@ def create_artist_node(name: str, genre: str):
     artist_uri = f"<http://musickg.org/artist/{slug}>"
     genre_uri = f"<http://musickg.org/genre/{genre.lower().strip()}>"
 
-    # SPARQL Update query
+    check_q = _PREFIXES + f"SELECT ?name WHERE {{ {artist_uri} music:artistName ?name . }} LIMIT 1"
+    exists = store.execute_sparql(check_q)
+
+    if exists:
+        print("Duplicate detected.")
+        return False, slug
+
     update_q = f"""
     PREFIX music: <http://musickg.org/ontology#>
     INSERT DATA {{

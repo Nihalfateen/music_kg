@@ -378,26 +378,20 @@ from .sparql_queries import create_artist_node
 
 @csrf_exempt
 def api_create_artist(request):
-    # This check ensures the view only runs when a POST is received
     if request.method == 'POST':
-        try:
-            data = json.loads(request.body)
-            name = data.get('name')
-            genre = data.get('genre')
+        data = json.loads(request.body)
+        name = data.get('name')
+        genre = data.get('genre')
 
-            if not name:
-                return JsonResponse({"error": "Name is required"}, status=400)
+        # success is False if the artist already exists OR if GraphDB fails
+        success, slug = create_artist_node(name, genre)
 
-            # Call the SPARQL logic we wrote earlier
-            success, slug = create_artist_node(name, genre)
+        if success:
+            return JsonResponse({"status": "ok", "slug": slug}, status=201)
+        else:
+            return JsonResponse({
+                "error": "Artist already exists in the Knowledge Graph",
+                "slug": slug
+            }, status=409)
 
-            if success:
-                return JsonResponse({"status": "ok", "slug": slug}, status=201)
-            else:
-                return JsonResponse({"error": "Failed to update GraphDB"}, status=500)
-
-        except json.JSONDecodeError:
-            return JsonResponse({"error": "Invalid JSON"}, status=400)
-
-    # If a GET request (or anything else) hits this, return 405
-    return JsonResponse({"error": "Method Not Allowed. Use POST."}, status=405)
+    return JsonResponse({"error": "Method Not Allowed"}, status=405)
