@@ -10,7 +10,7 @@ import { hashColor } from '../utils/helpers'
 import AddArtistModal from "../components/modals/AddArtistModal.jsx";
 
 const GENRES = ['pop','rap','rock','latin','r&b','edm']
-const ENTITY_TYPES = ['All','Artists','Albums','Tracks']
+const ENTITY_TYPES = ['Artists & Albums','Artists','Albums','Tracks']
 const SORT_OPTIONS = ['Relevance','Popularity','Year','Name']
 
 function DualSlider({ min, max, step = 0.01, value, onChange, label, format = v => v.toFixed(2) }) {
@@ -58,7 +58,7 @@ export default function SearchPage() {
   const [energyRange, setEnergyRange]   = useState([0, 1])
   const [danceRange, setDanceRange]     = useState([0, 1])
   const [minPop, setMinPop]             = useState(0)
-  const [entityType, setEntityType]     = useState('All')
+  const [entityType, setEntityType]     = useState('Artists & Albums')
   const [sortBy, setSortBy]             = useState('Relevance')
 
   const debounceRef  = useRef(null)
@@ -75,6 +75,11 @@ export default function SearchPage() {
       return
     }
 
+    if (!append) {
+      setResults([]);
+      setTotal(0);
+    }
+
     // Prevent concurrent non-append calls
     if (isFetching.current && !append) return
     isFetching.current = true
@@ -87,11 +92,12 @@ export default function SearchPage() {
         // Text search
         const res = await searchAll(query.trim(), { limit: 20 })
         const allResults = res?.data?.results || []
-        if (entityType !== 'All') {
+        console.log("Search Results from Backend:", allResults);
+        if (entityType === 'Artists & Albums') {
+          data = allResults.filter(r => r.type === 'artist' || r.type === 'album')
+        } else {
           const typeMap = { Artists: 'artist', Albums: 'album', Tracks: 'track' }
           data = allResults.filter(r => r.type === typeMap[entityType])
-        } else {
-          data = allResults
         }
       } else if (hasGenre) {
         // Genre-only browse via artists
@@ -251,89 +257,102 @@ export default function SearchPage() {
         {/* Search input + controls */}
         <div className="flex items-center gap-3 mb-5">
           <input
-            value={q}
-            onChange={e => setQ(e.target.value)}
-            placeholder="Search artists, albums, tracks…"
-            className="flex-1 bg-bg-card border border-border-col rounded-card px-4 py-2.5 text-sm text-text-primary placeholder-text-muted outline-none focus:border-accent transition-colors"
+              value={q}
+              onChange={e => setQ(e.target.value)}
+              placeholder="Search artists or albums…"
+              className="flex-1 bg-bg-card border border-border-col rounded-card px-4 py-2.5 text-sm text-text-primary placeholder-text-muted outline-none focus:border-accent transition-colors"
           />
           <select value={sortBy} onChange={e => setSortBy(e.target.value)}
-            className="bg-bg-card border border-border-col rounded-card px-3 py-2.5 text-sm text-text-secondary outline-none">
+                  className="bg-bg-card border border-border-col rounded-card px-3 py-2.5 text-sm text-text-secondary outline-none">
             {SORT_OPTIONS.map(s => <option key={s}>{s}</option>)}
           </select>
         </div>
 
+        <p className="text-[11px] text-text-muted mb-5 ml-1">
+        {(() => {
+          switch (entityType) {
+            case 'Tracks': return <span>Viewing all matching songs.</span>;
+            case 'Artists': return <span>Viewing all matching artists.</span>;
+            case 'Albums': return <span>Viewing all matching albums.</span>;
+            case 'Artists & Albums':
+            default: return ( <> Viewing artists and albums. Switch to "Tracks" for song results.</>);
+          }
+        })()}
+        </p>
+
         {/* Result count */}
         {(q || selectedGenres.length > 0) && !loading && (
-          <p className="text-xs text-text-muted mb-4">
-            {total} result{total !== 1 ? 's' : ''}
-            {q && <span> for <span className="text-accent">"{q}"</span></span>}
-          </p>
+            <p className="text-xs text-text-muted mb-4">
+              {total} result{total !== 1 ? 's' : ''}
+              {q && <span> for <span className="text-accent">"{q}"</span></span>}
+            </p>
         )}
 
         {q && !loading && (
-          <motion.div
-            initial={{ opacity: 0, y: -10 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="mb-8 p-6 bg-accent/5 border border-accent/20 rounded-card flex flex-col md:flex-row items-center justify-between gap-4"
-          >
-            <div className="text-center md:text-left">
-              <h3 className="text-lg font-bold text-text-primary">Don't see the exact artist?</h3>
-              <p className="text-sm text-text-secondary">Help us build the graph by adding "{q}" manually.</p>
-            </div>
-            <button
-              onClick={() => setShowAddModal(true)}
-              className="px-6 py-2.5 bg-accent text-black font-bold rounded-pill hover:bg-accent-hover transition-all shadow-lg shadow-accent/20 shrink-0"
+            <motion.div
+                initial={{opacity: 0, y: -10}}
+                animate={{opacity: 1, y: 0}}
+                className="mb-8 p-6 bg-accent/5 border border-accent/20 rounded-card flex flex-col md:flex-row items-center justify-between gap-4"
             >
-              + Add "{q}" to Graph
-            </button>
-          </motion.div>
+              <div className="text-center md:text-left">
+                <h3 className="text-lg font-bold text-text-primary">Don't see the exact artist?</h3>
+                <p className="text-sm text-text-secondary">Help us build the graph by adding "{q}" manually.</p>
+              </div>
+              <button
+                  onClick={() => setShowAddModal(true)}
+                  className="px-6 py-2.5 bg-accent text-black font-bold rounded-pill hover:bg-accent-hover transition-all shadow-lg shadow-accent/20 shrink-0"
+              >
+                + Add "{q}" to Graph
+              </button>
+            </motion.div>
         )}
 
         {/* Results grid */}
         {loading && results.length === 0 ? (
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-            {[...Array(8)].map((_, i) => <CardSkeleton key={i} />)}
-          </div>
-        ) : sorted.length > 0 ? (
-          <>
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-              <AnimatePresence>
-                {sorted.map((item, i) => (
-                  <motion.div key={item.uri || item.slug || i}
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: i * 0.03 }}>
-                    <EntityCard type={item.type || 'artist'} data={item} />
-                  </motion.div>
-                ))}
-              </AnimatePresence>
+              {[...Array(8)].map((_, i) => <CardSkeleton key={i}/>)}
             </div>
-            {/* Infinite scroll sentinel */}
-            <div ref={loaderRef} className="h-10 flex items-center justify-center mt-6">
-              {loading && <span className="text-xs text-text-muted">Loading more…</span>}
-            </div>
-          </>
+        ) : sorted.length > 0 ? (
+            <>
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                <AnimatePresence>
+                  {sorted.map((item, i) => (
+                      <motion.div key={item.uri || item.slug || i}
+                                  initial={{opacity: 0, y: 10}}
+                                  animate={{opacity: 1, y: 0}}
+                                  transition={{delay: i * 0.03}}>
+                        <EntityCard type={item.type || 'artist'} data={item}/>
+                      </motion.div>
+                  ))}
+                </AnimatePresence>
+              </div>
+              {/* Infinite scroll sentinel */}
+              <div ref={loaderRef} className="h-10 flex items-center justify-center mt-6">
+                {loading && <span className="text-xs text-text-muted">Loading more…</span>}
+              </div>
+            </>
         ) : (q || selectedGenres.length > 0) ? (
-          <div className="flex flex-col items-center justify-center py-24 text-center">
-            <div className="text-5xl mb-4">🔍</div>
-            <h3 className="text-lg font-semibold text-text-primary mb-2">No results found</h3>
-            <p className="text-sm text-text-secondary">Try a different search term or clear some filters.</p>
-          </div>
+            <div className="flex flex-col items-center justify-center py-24 text-center">
+              <div className="text-5xl mb-4">🔍</div>
+              <h3 className="text-lg font-semibold text-text-primary mb-2">No results found</h3>
+              <p className="text-sm text-text-secondary">Try a different search term or clear some filters.</p>
+            </div>
         ) : (
-          <div className="flex flex-col items-center justify-center py-24 text-center">
-            <div className="text-5xl mb-4">🎵</div>
-            <h3 className="text-lg font-semibold text-text-primary mb-2">Start exploring</h3>
-            <p className="text-sm text-text-secondary">Search for an artist, album, or track to begin.</p>
-          </div>
+            <div className="flex flex-col items-center justify-center py-24 text-center">
+              <div className="text-5xl mb-4">🎵</div>
+              <h3 className="text-lg font-semibold text-text-primary mb-2">Start exploring</h3>
+              <p className="text-sm text-text-secondary">Search for an artist or album. Use the "Tracks" filter to see
+                songs.</p>
+            </div>
         )}
         {showAddModal && (
             <AddArtistModal
-              initialName={q}
-              onClose={() => setShowAddModal(false)}
-              onSuccess={(slug) => {
-                setShowAddModal(false)
-                navigate(`/artist/${slug}`)
-              }}
+                initialName={q}
+                onClose={() => setShowAddModal(false)}
+                onSuccess={(slug) => {
+                  setShowAddModal(false)
+                  navigate(`/artist/${slug}`)
+                }}
             />
         )}
       </div>

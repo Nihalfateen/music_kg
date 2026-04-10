@@ -11,8 +11,10 @@ import AudioFeatureBar from '../components/common/AudioFeatureBar'
 import { PageSkeleton } from '../components/common/LoadingSkeleton'
 import { hashColor, formatMs } from '../utils/helpers'
 
+import AddSongsModal from "../components/modals/AddSongsModal.jsx";
+
 // ── Sortable tracks table ─────────────────────────────────────────────────────
-function SortableTable({ tracks }) {
+function SortableTable({ tracks, onEdit }) {
   const [sortKey, setSortKey] = useState('popularity')
   const [asc, setAsc] = useState(false)
 
@@ -43,6 +45,7 @@ function SortableTable({ tracks }) {
           <tr className="border-b border-border-col">
             <th className="text-left text-xs text-text-muted uppercase tracking-wider pb-2 w-8">#</th>
             <th className="text-left text-xs text-text-muted uppercase tracking-wider pb-2">Track</th>
+            <Th k="album_name" label="Album"/>
             <Th k="popularity"   label="Pop" />
             <Th k="energy"       label="Energy" />
             <Th k="danceability" label="Dance" />
@@ -57,6 +60,11 @@ function SortableTable({ tracks }) {
               <tr key={t.uri || i} className="border-b border-border-col/40 hover:bg-bg-hover transition-colors">
                 <td className="py-2.5 text-sm text-text-muted">{i + 1}</td>
                 <td className="py-2.5 text-sm font-medium text-text-primary max-w-xs truncate pr-4">{t.name}</td>
+                <td className="py-2.5 text-xs text-text-secondary truncate max-w-[150px]">
+                  <span className={t.album_name === "—" ? "text-text-muted/40 italic" : ""}>
+                    {t.album_name}
+                  </span>
+                </td>
                 <td className="py-2.5">
                   <div className="flex items-center gap-2">
                     <div className="w-16 h-1 bg-bg-hover rounded-full overflow-hidden">
@@ -69,6 +77,13 @@ function SortableTable({ tracks }) {
                 <td className="py-2.5 text-xs text-text-secondary font-mono">{af.danceability?.toFixed(2) ?? '—'}</td>
                 <td className="py-2.5 text-xs text-text-secondary font-mono">{af.valence?.toFixed(2) ?? '—'}</td>
                 <td className="py-2.5 text-xs text-text-muted">{formatMs(t.duration_ms)}</td>
+
+                <td className="py-2.5 text-right">
+                  <button
+                    onClick={() => onEdit(t)}
+                    className="opacity-100 group-hover:opacity-100 p-1.5 hover:bg-accent/20 rounded-pill text-accent transition-all text-xs font-semibold"
+                  >✎ Edit Song</button>
+                </td>
               </tr>
             )
           })}
@@ -224,6 +239,11 @@ export default function ArtistDetailPage() {
   const [recs, setRecs]       = useState(null)
   const [loading, setLoading] = useState(true)
 
+  const [showAddSongs, setShowAddSongs] = useState(false)
+
+  const [editingTrack, setEditingTrack] = useState(null);
+  const [newAlbumName, setNewAlbumName] = useState("");
+
   useEffect(() => {
     setLoading(true)
     Promise.all([
@@ -237,6 +257,16 @@ export default function ArtistDetailPage() {
       .catch(() => toast.error('Failed to load artist'))
       .finally(() => setLoading(false))
   }, [slug])
+
+    const handleUpdateAlbum = async () => {
+    try {
+      toast.success('Song updated!');
+      setEditingTrack(null);
+      window.location.reload(); // Refresh to show the track in its new home
+    } catch (err) {
+      toast.error('Failed to update album');
+    }
+  }
 
   if (loading) return <PageSkeleton />
   if (!artist) return (
@@ -258,8 +288,31 @@ export default function ArtistDetailPage() {
   const primaryGenre = artist.genres?.[0] || ''
   const accentColor  = primaryGenre ? hashColor(primaryGenre) : '#1db954'
 
-  // ── Option B: separate real albums from singles ───────────────────────────
   const allAlbums  = artist.albums || []
+  const allTracks = artist.top_tracks || []
+
+  const albumsToDisplay = allAlbums
+    .filter(a => (a.track_count || 0) > 1)
+    .map(a => ({
+      ...a,
+      tracks: (artist.top_tracks || []).filter(t => true).slice(0, a.track_count)
+    }));
+
+  // 2. Singles & EPs: Exactly 1 track
+  // const singles = allAlbums
+  //   .filter(a => (a.track_count || 0) <= 1)
+  //   .map(a => {
+  //     const match = (artist.top_tracks || []).find(t =>
+  //       t.name?.toLowerCase() === a.name?.toLowerCase()
+  //     );
+  //     return {
+  //       ...a,
+  //       popularity: match?.popularity || 0,
+  //       duration_ms: match?.duration_ms || 0,
+  //     };
+  //   });
+
+  const singles = allAlbums.filter(a => (a.track_count || 0) <= 1)
 
   // Build track lookup from top_tracks for singles
   const topTracksBySlug = {}
@@ -267,36 +320,25 @@ export default function ArtistDetailPage() {
     topTracksBySlug[t.slug] = t
   })
 
-  // Albums with 2+ tracks = real albums (enrich with tracks from top_tracks)
-  const realAlbums = allAlbums
-    .filter(a => (a.track_count || 0) > 1)
-    .map(a => ({
-      ...a,
-      // Attach matching tracks from top_tracks to show inline
-      tracks: (artist.top_tracks || []).filter(t =>
-        t.slug && a.slug && t.name  // basic match — will show what we have
-      ).slice(0, a.track_count || 5)
-    }))
-
   // Albums with 1 track = singles → flatten to track list
-  const singles = allAlbums
-    .filter(a => (a.track_count || 0) <= 1)
-    .map(a => {
-      // Try to find matching track from top_tracks by album name
-      const match = (artist.top_tracks || []).find(t =>
-        t.name?.toLowerCase() === a.name?.toLowerCase()
-      )
-      return {
-        uri:        a.uri,
-        slug:       a.slug,
-        name:       a.name,
-        year:       a.year,
-        popularity: match?.popularity || 0,
-        duration_ms: match?.duration_ms || 0,
-        audio_features: match?.audio_features || {},
-      }
-    })
-    .sort((a, b) => (b.popularity || 0) - (a.popularity || 0))
+  // const singles = allAlbums
+  //   .filter(a => (a.track_count || 0) <= 1)
+  //   .map(a => {
+  //     // Try to find matching track from top_tracks by album name
+  //     const match = (artist.top_tracks || []).find(t =>
+  //       t.name?.toLowerCase() === a.name?.toLowerCase()
+  //     )
+  //     return {
+  //       uri:        a.uri,
+  //       slug:       a.slug,
+  //       name:       a.name,
+  //       year:       a.year,
+  //       popularity: match?.popularity || 0,
+  //       duration_ms: match?.duration_ms || 0,
+  //       audio_features: match?.audio_features || {},
+  //     }
+  //   })
+  //   .sort((a, b) => (b.popularity || 0) - (a.popularity || 0))
 
   return (
     <div className="max-w-6xl mx-auto px-6 py-8">
@@ -321,8 +363,8 @@ export default function ArtistDetailPage() {
                 ))}
               </div>
               <div className="flex items-center gap-6 text-sm text-text-secondary flex-wrap">
-                {realAlbums.length > 0 && <span>💿 {realAlbums.length} album{realAlbums.length !== 1 ? 's' : ''}</span>}
-                {singles.length > 0    && <span>🎵 {singles.length} single{singles.length !== 1 ? 's' : ''}</span>}
+                {albumsToDisplay.length > 0 && <span>💿 {albumsToDisplay.length} album{albumsToDisplay.length !== 1 ? 's' : ''}</span>}
+                {/*{singles.length > 0    && <span>🎵 {singles.length} single{singles.length !== 1 ? 's' : ''}</span>}*/}
                 <span>🎵 {artist.top_tracks?.length || 0}+ tracks</span>
                 {artist.similar_artists?.length > 0 && <span>🔗 {artist.similar_artists.length} similar</span>}
                 {artist.dbpedia_uri && (
@@ -364,7 +406,7 @@ export default function ArtistDetailPage() {
       </div>
 
       {/* ── Option A: Real Albums (2+ tracks) — expand inline ────────────────── */}
-      {realAlbums.length > 0 && (
+      {albumsToDisplay.length > 0 && (
         <section className="mb-10">
           <h2 className="text-sm font-bold text-text-primary uppercase tracking-wider mb-4">
             Albums
@@ -373,18 +415,81 @@ export default function ArtistDetailPage() {
             </span>
           </h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
-            {realAlbums.map(a => <AlbumCard key={a.uri} album={a} />)}
+            {albumsToDisplay.map(a =>
+                <AlbumCard key={a.uri} album={a} />)}
           </div>
         </section>
       )}
 
       {/* ── Top Tracks table ─────────────────────────────────────────────────── */}
-      {artist.top_tracks?.length > 0 && (
+      {allTracks?.length > 0 && (
         <section className="mb-10">
-          <h2 className="text-sm font-bold text-text-primary uppercase tracking-wider mb-4">Top Tracks</h2>
-          <div className="bg-bg-card border border-border-col rounded-card p-4">
-            <SortableTable tracks={artist.top_tracks} />
+          {/*<h2 className="text-sm font-bold text-text-primary uppercase tracking-wider mb-4">Top Tracks</h2>*/}
+          {/*<div className="bg-bg-card border border-border-col rounded-card p-4">*/}
+          {/*  <SortableTable tracks={artist.top_tracks} />*/}
+          {/*</div>*/}
+          {/* --- Song List Section --- */}
+          <section className="mb-12">
+            <h2 className="text-2xl font-bold mb-6">Songs</h2>
+            <SortableTable
+              tracks={allTracks}
+              onEdit={(t) => {
+                setEditingTrack(t);
+                setNewAlbumName(t.album_name || ""); // Pre-fill with current album
+              }}
+            />
+          </section>
+          {/* NEW BUTTON RIGHT BELOW */}
+          <div className="mt-8 flex justify-center">
+            <button
+              onClick={() => setShowAddSongs(true)}
+              className="group relative px-8 py-4 bg-bg-card border border-border-col rounded-card hover:border-accent transition-all overflow-hidden"
+            >
+              <div className="relative z-10 flex items-center gap-3">
+                <span className="text-2xl text-accent group-hover:scale-125 transition-transform">+</span>
+                <span className="font-bold text-text-primary">Add songs to this artist</span>
+              </div>
+              <div className="absolute inset-0 bg-accent/5 opacity-0 group-hover:opacity-100 transition-opacity" />
+            </button>
           </div>
+
+          {/* Edit Modal */}
+          <AnimatePresence>
+            {editingTrack && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+                <motion.div initial={{ scale: 0.9 }} animate={{ scale: 1 }} exit={{ scale: 0.9 }} className="bg-bg-card border border-border-col rounded-card p-6 w-full max-w-md shadow-2xl">
+                  <h3 className="text-lg font-bold mb-2 text-text-primary">Edit Metadata</h3>
+                  <p className="text-sm text-text-muted mb-4">Moving: <span className="text-accent">{editingTrack.name}</span></p>
+                  <p className="text-xs text-text-muted mb-4 px-3 py-2 bg-bg-primary rounded-pill border border-border-col/50">
+                    Current Album: <span className="text-text-primary font-mono ml-1">{editingTrack.album_name}</span>
+                  </p>
+                  <label className="block text-xs font-semibold text-text-muted uppercase mb-2">New Album Name</label>
+                  <input
+                    autoFocus
+                    value={newAlbumName}
+                    onChange={(e) => setNewAlbumName(e.target.value)}
+                    className="w-full bg-bg-primary border border-border-col rounded-pill px-4 py-2 outline-none focus:border-accent text-text-primary mb-6"
+                  />
+                  <div className="flex gap-3">
+                    <button onClick={handleUpdateAlbum} className="flex-1 bg-accent text-bg-primary font-bold py-2 rounded-pill">Save</button>
+                    <button onClick={() => setEditingTrack(null)} className="flex-1 bg-bg-hover text-text-primary py-2 rounded-pill">Cancel</button>
+                  </div>
+                </motion.div>
+              </div>
+            )}
+          </AnimatePresence>
+
+          {/* --- Modal Rendering --- */}
+          {showAddSongs && (
+            <AddSongsModal
+              artist={artist}
+              onClose={() => setShowAddSongs(false)}
+              onSuccess={() => {
+                setShowAddSongs(false);
+                window.location.reload();
+              }}
+            />
+          )}
         </section>
       )}
 

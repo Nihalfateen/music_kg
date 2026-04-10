@@ -6,6 +6,7 @@ from music_graph import views
 
 urlpatterns = [
     path('artists/create/', views.api_create_artist, name='api_create_artist'),
+    path('songs/bulk-create/', views.api_create_songs_bulk, name='api_create_songs_bulk'),
 
     # Artists — use re_path to support special chars like * & + in artist names
     path('artists/', views.ArtistListView.as_view(), name='artist-list'),

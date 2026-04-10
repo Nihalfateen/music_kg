@@ -138,7 +138,8 @@ def _get_dbpedia_for(uri: str) -> Optional[str]:
 # 2. get_artist_detail
 # ─────────────────────────────────────────────────────────────────────────────
 
-def get_artist_detail(artist_slug: str) -> Optional[Dict]:
+def get_artist_detail(artist: str) -> Optional[Dict]:
+    artist_slug = artist.strip()
     artist_ref = f"<http://musickg.org/artist/{artist_slug}>"
 
     # Basic info
@@ -168,10 +169,10 @@ def get_artist_detail(artist_slug: str) -> Optional[Dict]:
     album_q = _PREFIXES + f"""
     SELECT ?albumUri ?albumName ?year WHERE {{
         {artist_ref} music:hasAlbum ?albumUri .
-        ?albumUri music:albumName ?albumName ;
-                  music:releaseYear ?year .
+        ?albumUri music:albumName ?albumName .
+        OPTIONAL {{ ?albumUri music:releaseYear ?year }}
     }}
-    ORDER BY ?year
+    ORDER BY DESC(?year)
     """
     # Count tracks per album using a separate simple query
     album_tracks_q = _PREFIXES + f"""
@@ -191,21 +192,23 @@ def get_artist_detail(artist_slug: str) -> Optional[Dict]:
             "uri":         str(r["albumUri"]),
             "slug":        _slug(str(r["albumUri"])),
             "name":        str(r["albumName"]),
-            "year":        r.get("year"),
+            "year":        r.get("year", "Unknown"),
             "track_count": track_counts.get(str(r["albumUri"]), 0),
         }
         for r in store.execute_sparql(album_q)
     ]
 
-    # Top 10 tracks by popularity
+    # Tracks by popularity
     tracks_q = _PREFIXES + f"""
     SELECT ?trackUri ?trackName ?popularity
            ?energy ?danceability ?valence ?tempo ?loudness
     WHERE {{
         ?trackUri a music:Track ;
                   music:trackName ?trackName ;
-                  music:performedBy {artist_ref} ;
-                  music:popularity ?popularity .
+                  music:performedBy {artist_ref} .
+
+        OPTIONAL {{ ?trackUri music:popularity ?popularity }}
+
         OPTIONAL {{
             ?trackUri music:hasAudioFeatures ?af .
             ?af music:energy ?energy ;
@@ -227,11 +230,11 @@ def get_artist_detail(artist_slug: str) -> Optional[Dict]:
             "name":        str(r["trackName"]),
             "popularity":  r.get("popularity", 0),
             "audio_features": {
-                "energy":       r.get("energy"),
-                "danceability": r.get("danceability"),
-                "valence":      r.get("valence"),
-                "tempo":        r.get("tempo"),
-                "loudness":     r.get("loudness"),
+                "energy":       r.get("energy", 0.0),
+                "danceability": r.get("danceability", 0.0),
+                "valence":      r.get("valence", 0.0),
+                "tempo":        r.get("tempo", 0.0),
+                "loudness":     r.get("loudness", 0.0),
             },
         }
         top_tracks.append(t)
@@ -281,6 +284,36 @@ def get_artist_detail(artist_slug: str) -> Optional[Dict]:
     }
 
 
+def update_track_metadata(track_uri: str, new_album_name: str):
+    """Moves a track to a different album node."""
+    # 1. Prepare Identifiers
+    # We derive the artist slug from the track URI to keep it in the same family
+    # track_uri example: http://musickg.org/track/harry_styles_as_it_was
+    parts = track_uri.split('/')[-1].split('_')
+    artist_slug = "_".join(parts[:2])  # e.g., harry_styles
+
+    album_slug = quote(new_album_name.lower().replace(' ', '_'))
+    new_album_uri = f"http://musickg.org/album/{artist_slug}_{album_slug}"
+
+    # 2. The Move Query
+    update_q = f"""
+    PREFIX music: <http://musickg.org/ontology#>
+
+    # 1. Break the old connection
+    DELETE {{ ?oldAlbum music:hasTrack <{track_uri}> }}
+    WHERE  {{ ?oldAlbum music:hasTrack <{track_uri}> }};
+
+    # 2. Create the new connection
+    INSERT DATA {{
+        <{new_album_uri}> rdf:type music:Album ;
+                         music:albumName \"\"\"{new_album_name}\"\"\" ;
+                         music:slug "{artist_slug}_{album_slug}" .
+        <{new_album_uri}> music:hasTrack <{track_uri}> .
+        <http://musickg.org/artist/{artist_slug}> music:hasAlbum <{new_album_uri}> .
+    }}
+    """
+    return store.execute_sparql_update(update_q)
+
 # ─────────────────────────────────────────────────────────────────────────────
 # 3. get_album_detail
 # ─────────────────────────────────────────────────────────────────────────────
@@ -305,13 +338,15 @@ def get_album_detail(album_slug: str) -> Optional[Dict]:
     SELECT DISTINCT ?trackUri ?trackName ?popularity ?duration
            ?energy ?danceability ?valence ?tempo ?loudness
     WHERE {{
-        {{
-            {album_ref} music:hasTrack ?trackUri .
-        }} UNION {{
-            ?trackUri music:performedBy ?artistUri .
-            ?artistUri music:hasAlbum {album_ref} .
+        ?trackUri a music:Track ;
+                  music:trackName ?trackName ;
+                  music:performedBy {actual_uri} .
+
+        # JOIN the album name so the table can see it
+        OPTIONAL {{
+            ?albumUri music:hasTrack ?trackUri ;
+                      music:albumName ?albumName .
         }}
-        ?trackUri music:trackName ?trackName .
         OPTIONAL {{ ?trackUri music:popularity ?popularity }}
         OPTIONAL {{ ?trackUri music:durationMs ?duration }}
         OPTIONAL {{
@@ -330,6 +365,7 @@ def get_album_detail(album_slug: str) -> Optional[Dict]:
             "uri":        str(r["trackUri"]),
             "slug":       _slug(str(r["trackUri"])),
             "name":       str(r["trackName"]),
+            "album_name": str(r["trackName"]),
             "popularity": r.get("popularity", 0),
             "duration_ms": r.get("duration", 0),
             "audio_features": {
@@ -846,6 +882,59 @@ def create_artist_node(name: str, genre: str):
     """
     success = store.execute_sparql_update(update_q)
     return success, slug
+
+
+def create_songs_bulk(artist, songs_list):
+    # 1. Normalize identifiers
+    artist_slug = unquote(artist).strip().lower()
+    artist_uri = f"<http://musickg.org/artist/{artist_slug}>"
+    created_count = 0
+
+    for song in songs_list:
+        song_name = song['name'].strip()
+        album_name = song.get('album', '').strip()
+
+        # Create a unique slug for the song
+        track_safe_name = quote(song_name.lower().replace(' ', '_'))
+        song_slug = f"{artist_slug}_{track_safe_name}"
+        track_uri = f"<http://musickg.org/track/{song_slug}>"
+
+        # 2. Check existence using SELECT (to avoid the 'results' error)
+        check_q = _PREFIXES + f"SELECT ?t WHERE {{ {track_uri} music:performedBy {artist_uri} . }} LIMIT 1"
+        if store.execute_sparql(check_q):
+            print(f"Skipping duplicate: {song_name}")
+            continue
+
+            # 3. Handle Album
+        album_triples = ""
+        if album_name:
+            album_safe_name = quote(album_name.lower().replace(' ', '_'))
+            album_slug = f"{artist_slug}_{album_safe_name}"
+            album_uri = f"<http://musickg.org/album/{album_slug}>"
+            album_triples = f"""
+                {album_uri} a music:Album ; 
+                            music:albumName \"\"\"{album_name}\"\"\" .
+                {album_uri} music:hasTrack {track_uri} .
+                {artist_uri} music:hasAlbum {album_uri} .
+            """
+
+        # 4. FIXED CONSTRUCT: Added 'rdf:' prefix and triple quotes
+        update_q = f"""
+            PREFIX music: <http://musickg.org/ontology#>
+            PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+            INSERT DATA {{
+                {track_uri} rdf:type music:Track .
+                {track_uri} music:trackName \"\"\"{song_name}\"\"\" .
+                {track_uri} music:slug "{song_slug}" .
+                {track_uri} music:performedBy {artist_uri} .
+                {album_triples}
+            }}
+        """
+
+        if store.execute_sparql_update(update_q):
+            created_count += 1
+
+    return created_count > 0, created_count
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 9. execute_raw_sparql

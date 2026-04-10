@@ -25,7 +25,10 @@ from music_graph.models import SearchLog, SPARQLQueryTemplate
 from music_graph.rdf_store import store
 from music_graph.similarity import get_recommendations, engine_stats
 from music_graph.serializers import SPARQLQueryTemplateSerializer
+
 from music_graph.sparql_queries import create_artist_node
+from music_graph.sparql_queries import create_songs_bulk
+from music_graph.sparql_queries import update_track_metadata
 
 log = logging.getLogger(__name__)
 
@@ -395,3 +398,24 @@ def api_create_artist(request):
             }, status=409)
 
     return JsonResponse({"error": "Method Not Allowed"}, status=405)
+
+@csrf_exempt
+def api_create_songs_bulk(request):
+    if request.method == 'POST':
+        data = json.loads(request.body)
+        artist_slug = data.get('artist_slug')
+        songs = data.get('songs', []) # Expected: [{'name': 's1', 'album': 'a1'}, ...]
+
+        success, count = create_songs_bulk(artist_slug, songs)
+        return JsonResponse({"status": "ok", "created": count}, status=201)
+    return JsonResponse({"error": "Method not allowed"}, status=405)
+
+@csrf_exempt
+def api_update_track(request):
+    if request.method == 'POST':
+        data = json.loads(request.body)
+        success = update_track_metadata(
+            track_uri=data.get('track_uri'),
+            new_album_name=data.get('new_album_name')
+        )
+        return JsonResponse({'success': success})

@@ -41,5 +41,6 @@ export const getAudioDistribution = ()        => api.get('/audio-distribution/')
 export const getSparqlTemplates   = (params)  => api.get('/sparql-templates/', { params })
 export const getRecommendations   = (slug)    => api.get(`/recommendations/${encodeURIComponent(slug)}/`)
 export const createArtist = (data) => api.post('/artists/create/', data)
+export const createSongsBulk = (data) => api.post('/songs/bulk-create/', data);
 
 export default api
