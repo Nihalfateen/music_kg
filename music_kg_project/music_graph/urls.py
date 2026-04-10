@@ -5,9 +5,10 @@ from django.urls import path, re_path
 from music_graph import views
 
 urlpatterns = [
+    path('artists/create/', views.api_create_artist, name='api_create_artist'),
+
     # Artists — use re_path to support special chars like * & + in artist names
-    path('artists/',                    views.ArtistListView.as_view(),
-         name='artist-list'),
+    path('artists/', views.ArtistListView.as_view(), name='artist-list'),
     re_path(r'^artists/(?P<slug>.+)/$',
             views.ArtistDetailView.as_view(),    name='artist-detail'),
 
@@ -25,9 +26,11 @@ urlpatterns = [
 
     # SPARQL
     path('sparql/',
-         views.SPARQLView.as_view(),           name='sparql'),
+         views.SPARQLView.as_view(),         name='sparql'),
+    path('sparql/update/',
+         views.SPARQLUpdateView.as_view(),   name='sparql-update'),
     path('sparql-templates/',
-         views.SPARQLTemplatesView.as_view(),  name='sparql-templates'),
+         views.SPARQLTemplatesView.as_view(), name='sparql-templates'),
 
     # Stats
     path('stats/',
@@ -48,4 +51,5 @@ urlpatterns = [
     # Recommendations
     re_path(r'^recommendations/(?P<slug>.+)/$',
             views.RecommendationsView.as_view(), name='recommendations'),
+
 ]

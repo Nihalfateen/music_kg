@@ -7,6 +7,8 @@ import EntityCard from '../components/common/EntityCard'
 import { CardSkeleton } from '../components/common/LoadingSkeleton'
 import { hashColor } from '../utils/helpers'
 
+import AddArtistModal from "../components/modals/AddArtistModal.jsx";
+
 const GENRES = ['pop','rap','rock','latin','r&b','edm']
 const ENTITY_TYPES = ['All','Artists','Albums','Tracks']
 const SORT_OPTIONS = ['Relevance','Popularity','Year','Name']
@@ -43,6 +45,8 @@ export default function SearchPage() {
   const [page, setPage]         = useState(1)
   const [hasMore, setHasMore]   = useState(false)
   const [total, setTotal]       = useState(0)
+
+  const [showAddModal, setShowAddModal] = useState(false)
 
   // Filters
   const [selectedGenres, setSelectedGenres] = useState(
@@ -214,21 +218,21 @@ export default function SearchPage() {
           </div>
         </div>
 
-        {/* Year range */}
+        {/* Year range
         <DualSlider label="Year" min={1950} max={2024} step={1}
           value={yearRange} onChange={setYearRange}
           format={v => Math.round(v).toString()} />
 
         {/* Energy range */}
-        <DualSlider label="Energy" min={0} max={1} step={0.01}
-          value={energyRange} onChange={setEnergyRange} />
+        {/* <DualSlider label="Energy" min={0} max={1} step={0.01}
+          value={energyRange} onChange={setEnergyRange} /> */}
 
         {/* Danceability range */}
-        <DualSlider label="Danceability" min={0} max={1} step={0.01}
-          value={danceRange} onChange={setDanceRange} />
+        {/* <DualSlider label="Danceability" min={0} max={1} step={0.01} */}
+          {/* // value={danceRange} onChange={setDanceRange} /> */} 
 
         {/* Min popularity */}
-        <div className="mb-4">
+        {/* <div className="mb-4">
           <div className="flex justify-between text-xs text-text-muted mb-1">
             <span>Min Popularity</span>
             <span>{minPop}</span>
@@ -237,7 +241,7 @@ export default function SearchPage() {
             onChange={e => setMinPop(parseInt(e.target.value))}
             className="w-full accent-accent h-1"
           />
-        </div>
+        </div> */}
       </aside>
 
       {/* Main */}
@@ -262,6 +266,25 @@ export default function SearchPage() {
             {total} result{total !== 1 ? 's' : ''}
             {q && <span> for <span className="text-accent">"{q}"</span></span>}
           </p>
+        )}
+
+        {q && !loading && (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mb-8 p-6 bg-accent/5 border border-accent/20 rounded-card flex flex-col md:flex-row items-center justify-between gap-4"
+          >
+            <div className="text-center md:text-left">
+              <h3 className="text-lg font-bold text-text-primary">Don't see the exact artist?</h3>
+              <p className="text-sm text-text-secondary">Help us build the graph by adding "{q}" manually.</p>
+            </div>
+            <button
+              onClick={() => setShowAddModal(true)}
+              className="px-6 py-2.5 bg-accent text-black font-bold rounded-pill hover:bg-accent-hover transition-all shadow-lg shadow-accent/20 shrink-0"
+            >
+              + Add "{q}" to Graph
+            </button>
+          </motion.div>
         )}
 
         {/* Results grid */}
@@ -300,6 +323,16 @@ export default function SearchPage() {
             <h3 className="text-lg font-semibold text-text-primary mb-2">Start exploring</h3>
             <p className="text-sm text-text-secondary">Search for an artist, album, or track to begin.</p>
           </div>
+        )}
+        {showAddModal && (
+            <AddArtistModal
+              initialName={q}
+              onClose={() => setShowAddModal(false)}
+              onSuccess={(slug) => {
+                setShowAddModal(false)
+                navigate(`/artists/${slug}`)
+              }}
+            />
         )}
       </div>
     </div>

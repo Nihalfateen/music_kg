@@ -3,7 +3,7 @@ music_graph/sparql_queries.py
 
 All SPARQL-backed query functions.
 Each function builds a query string, runs it through the RDFStore singleton,
-and returns clean Python dicts ready for serialisation.
+and returns clean Python dicts ready for serialization.
 """
 import re
 import time
@@ -47,43 +47,80 @@ def _album_uri_from_slug(slug: str) -> str:
 # 1. get_artists
 # ─────────────────────────────────────────────────────────────────────────────
 
+# def get_artists(search=None, genre=None, limit=20, offset=0) -> List[Dict]:
+#     """
+#     Fast artist list using the in-memory search index.
+#     No SPARQL — reads from pre-built CSV index.
+#     """
+#     index = _get_search_index()
+#
+#     # Filter to artists only
+#     results = []
+#     for item in index:
+#         if item["type"] != "artist":
+#             continue
+#
+#         # Genre filter
+#         if genre:
+#             item_genres = item.get("extra_info", {}).get("genres", [])
+#             genre_lower = genre.strip().lower()
+#             if genre_lower not in [g.lower() for g in item_genres]:
+#                 continue
+#
+#         # Search filter
+#         if search:
+#             if search.strip().lower() not in item["name_lower"]:
+#                 continue
+#
+#         results.append({
+#             "uri":         item["uri"],
+#             "name":        item["name"],
+#             "slug":        item["slug"],
+#             "genres":      item.get("extra_info", {}).get("genres", []),
+#             "dbpedia_uri": None,
+#         })
+#
+#     # Sort and paginate
+#     results.sort(key=lambda x: x["name"])
+#     return results[offset: offset + limit]
+
 def get_artists(search=None, genre=None, limit=20, offset=0) -> List[Dict]:
     """
-    Fast artist list using the in-memory search index.
-    No SPARQL — reads from pre-built CSV index.
+    Queries GraphDB for artists, supporting genre and name filters.
     """
-    index = _get_search_index()
+    filters = []
+    if search:
+        filters.append(f'FILTER(CONTAINS(LCASE(?name), "{search.lower()}"))')
 
-    # Filter to artists only
-    results = []
-    for item in index:
-        if item["type"] != "artist":
-            continue
+    genre_pattern = ""
+    if genre:
+        # Match artists who have tracks in this genre
+        genre_uri = f"<http://musickg.org/genre/{genre.lower().strip()}>"
+        genre_pattern = f"?uri music:inGenre {genre_uri} ."
 
-        # Genre filter
-        if genre:
-            item_genres = item.get("extra_info", {}).get("genres", [])
-            genre_lower = genre.strip().lower()
-            if genre_lower not in [g.lower() for g in item_genres]:
-                continue
+    query = _PREFIXES + f"""
+    SELECT DISTINCT ?uri ?name ?slug WHERE {{
+        ?uri a music:Artist ;
+             music:artistName ?name ;
+             music:slug ?slug .
+        {genre_pattern}
+        {chr(10).join(filters)}
+    }}
+    ORDER BY ?name
+    LIMIT {limit}
+    OFFSET {offset}
+    """
 
-        # Search filter
-        if search:
-            if search.strip().lower() not in item["name_lower"]:
-                continue
-
-        results.append({
-            "uri":         item["uri"],
-            "name":        item["name"],
-            "slug":        item["slug"],
-            "genres":      item.get("extra_info", {}).get("genres", []),
-            "dbpedia_uri": None,
-        })
-
-    # Sort and paginate
-    results.sort(key=lambda x: x["name"])
-    return results[offset: offset + limit]
-
+    rows = store.execute_sparql(query)
+    return [
+        {
+            "uri": str(r["uri"]),
+            "name": str(r["name"]),
+            "slug": str(r["slug"]),
+            "type": "artist"
+        }
+        for r in rows
+    ]
 
 def _get_dbpedia_for(uri: str) -> Optional[str]:
     """Return first owl:sameAs DBpedia URI for a given resource."""
@@ -179,7 +216,6 @@ def get_artist_detail(artist_slug: str) -> Optional[Dict]:
         }}
     }}
     ORDER BY DESC(?popularity)
-    LIMIT 10
     """
     top_tracks = []
     energy_sum = dance_sum = val_sum = tempo_sum = loud_sum = 0.0
@@ -544,45 +580,108 @@ def _get_search_index() -> List[Dict]:
 # 5. full_text_search  (fast in-memory)
 # ─────────────────────────────────────────────────────────────────────────────
 
+# def full_text_search(query: str, limit: int = 20) -> List[Dict]:
+#     """
+#     Fast in-memory search. Index built once on startup via RDF triple iteration.
+#     Each search is O(n) Python string scan — typically <200ms for 80k entries.
+#     """
+#     if not query or not query.strip():
+#         return []
+#
+#     q_lower = query.strip().lower()
+#     index = _get_search_index()
+#
+#     results = []
+#     for item in index:
+#         if q_lower not in item["name_lower"]:
+#             continue
+#         n = item["name_lower"]
+#         if n == q_lower:
+#             score = 1.0
+#         elif n.startswith(q_lower):
+#             score = 0.7
+#         else:
+#             score = 0.4
+#
+#         results.append({
+#             "type":       item["type"],
+#             "uri":        item["uri"],
+#             "slug":       item["slug"],
+#             "name":       item["name"],
+#             "score":      score,
+#             "extra_info": item["extra_info"],
+#         })
+#
+#     results.sort(key=lambda x: (
+#         -x["score"],
+#         -(x["extra_info"].get("popularity") or 0),
+#         x["name"],
+#     ))
+#     return results[:limit]
+
 def full_text_search(query: str, limit: int = 20) -> List[Dict]:
-    """
-    Fast in-memory search. Index built once on startup via RDF triple iteration.
-    Each search is O(n) Python string scan — typically <200ms for 80k entries.
-    """
     if not query or not query.strip():
         return []
 
     q_lower = query.strip().lower()
-    index = _get_search_index()
 
+    # 1. GET RESULTS FROM THE LIVE GRAPH (SPARQL)
+    # This finds the artists/songs you just added
+    graph_q = _PREFIXES + f"""
+    SELECT ?uri ?name ?type ?slug WHERE {{
+        {{
+            ?uri a music:Artist ; music:artistName ?name .
+            BIND("artist" AS ?type)
+        }} UNION {{
+            ?uri a music:Track ; music:trackName ?name .
+            BIND("track" AS ?type)
+        }} UNION {{
+            ?uri a music:Album ; music:albumName ?name .
+            BIND("album" AS ?type)
+        }}
+        ?uri music:slug ?slug .
+        FILTER(CONTAINS(LCASE(STR(?name)), "{q_lower}"))
+    }} LIMIT {limit}
+    """
+    graph_rows = store.execute_sparql(graph_q)
+
+    # Format graph results
     results = []
+    seen_uris = set()
+    for r in graph_rows:
+        uri = str(r["uri"])
+        seen_uris.add(uri)
+        results.append({
+            "type": str(r["type"]),
+            "uri": uri,
+            "slug": str(r["slug"]),
+            "name": str(r["name"]),
+            "score": 1.0,  # Live matches get top priority
+            "extra_info": {"from_graph": True},
+        })
+
+    # 2. GET RESULTS FROM CSV INDEX (FAST FALLBACK)
+    index = _get_search_index()
     for item in index:
-        if q_lower not in item["name_lower"]:
-            continue
-        n = item["name_lower"]
-        if n == q_lower:
-            score = 1.0
-        elif n.startswith(q_lower):
-            score = 0.7
-        else:
-            score = 0.4
+        if item["uri"] in seen_uris: continue  # Don't duplicate
+        if q_lower not in item["name_lower"]: continue
 
         results.append({
-            "type":       item["type"],
-            "uri":        item["uri"],
-            "slug":       item["slug"],
-            "name":       item["name"],
-            "score":      score,
+            "type": item["type"],
+            "uri": item["uri"],
+            "slug": item["slug"],
+            "name": item["name"],
+            "score": _score(item["name"], query),
             "extra_info": item["extra_info"],
         })
 
+    # 3. SORT & LIMIT
     results.sort(key=lambda x: (
         -x["score"],
         -(x["extra_info"].get("popularity") or 0),
         x["name"],
     ))
     return results[:limit]
-
 
 def _score(name: str, query: str) -> float:
     n, q = name.lower(), query.lower()
@@ -720,9 +819,30 @@ def _make_histogram(values, min_val, max_val, n_buckets):
         counts[idx] += 1
     return labels, counts
 
+# ─────────────────────────────────────────────────────────────────────────────
+# 8. Add and Update Information
+# ─────────────────────────────────────────────────────────────────────────────
+
+def create_artist_node(name: str, genre: str):
+    slug = quote(name.lower().strip().replace(" ", "_"))
+    artist_uri = f"<http://musickg.org/artist/{slug}>"
+    genre_uri = f"<http://musickg.org/genre/{genre.lower().strip()}>"
+
+    # SPARQL Update query
+    update_q = f"""
+    PREFIX music: <http://musickg.org/ontology#>
+    INSERT DATA {{
+        {artist_uri} a music:Artist ;
+                    music:artistName \"\"\"{name}\"\"\" ;
+                    music:slug "{slug}" .
+        {artist_uri} music:inGenre {genre_uri} .
+    }}
+    """
+    success = store.execute_sparql_update(update_q)
+    return success, slug
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 8. execute_raw_sparql
+# 9. execute_raw_sparql
 # ─────────────────────────────────────────────────────────────────────────────
 
 _FORBIDDEN = re.compile(
