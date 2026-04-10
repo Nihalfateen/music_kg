@@ -328,10 +328,14 @@ export default function SearchPage() {
             <AddArtistModal
               initialName={q}
               onClose={() => setShowAddModal(false)}
+<<<<<<< Updated upstream
               onSuccess={(slug) => {
                 setShowAddModal(false)
                 navigate(`/artists/${slug}`)
               }}
+=======
+              onSuccess={(slug) => navigate(`/artists/${slug}`)}
+>>>>>>> Stashed changes
             />
         )}
       </div>
