@@ -29,6 +29,7 @@ from music_graph.serializers import SPARQLQueryTemplateSerializer
 from music_graph.sparql_queries import create_artist_node
 from music_graph.sparql_queries import create_songs_bulk
 from music_graph.sparql_queries import update_track_album
+from music_graph.sparql_queries import update_album_year
 
 log = logging.getLogger(__name__)
 
@@ -415,4 +416,31 @@ def update_album_view(request):
         )
         return JsonResponse({'status': 'success'})
     except Exception as e:
+        return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+
+
+@csrf_exempt
+def update_album_year(request):
+    try:
+        data = json.loads(request.body)
+        album_uri = data.get('albumUri')
+        new_year_raw = data.get('newYear')
+
+        if not album_uri or new_year_raw is None:
+            return JsonResponse({'status': 'error', 'message': 'Missing albumUri or newYear'}, status=400)
+
+        try:
+            new_year = int(float(new_year_raw))
+        except (ValueError, TypeError):
+            return JsonResponse({'status': 'error', 'message': 'Year must be a valid number'}, status=400)
+
+        success = sq.update_album_year(album_uri, new_year)
+
+        if success:
+            return JsonResponse({'status': 'success'})
+        else:
+            return JsonResponse({'status': 'error', 'message': 'SPARQL update failed'}, status=500)
+
+    except Exception as e:
+        print(f"Update Album Year Error: {str(e)}")
         return JsonResponse({'status': 'error', 'message': str(e)}, status=500)

@@ -465,6 +465,7 @@ def get_album_detail(album_slug: str) -> Optional[Dict]:
     } for r in results]
 
     return {
+        "uri": album_ref.strip("<>"),
         "name": str(r0["albumName"]),
         "year": str(r0.get("year", "Unknown")),
         "artist_name": str(r0.get("artistName", "Unknown Artist")),
@@ -1121,56 +1122,145 @@ def create_songs_bulk(artist_slug, songs_list):
 
     return created_count > 0, created_count
 
-def update_track_album(track_uri: str, artist_uri: str, new_album_name: str):
-    # 1. CHECK FOR EXISTING ALBUM
-    # Ask the graph: "Does this artist already have an album with this exact name?"
+# def update_track_album(track_uri: str, artist_uri: str, new_album_name: str):
+#     # 1. CHECK FOR EXISTING ALBUM
+#     # Ask the graph: "Does this artist already have an album with this exact name?"
+#     check_q = _PREFIXES + f"""
+#     SELECT ?existingAlbum WHERE {{
+#         <{artist_uri}> music:hasAlbum ?existingAlbum .
+#         ?existingAlbum music:albumName "{new_album_name}" .
+#     }} LIMIT 1
+#     """
+#     res = store.execute_sparql(check_q)
+#
+#     if res:
+#         # If it exists, use that URI!
+#         new_album_uri = str(res[0]['existingAlbum'])
+#     else:
+#         # If it doesn't exist, only THEN create a new slug-based URI
+#         new_slug = new_album_name.lower().replace(" ", "_").strip()
+#         new_album_uri = f"http://musickg.org/album/{new_slug}"
+#
+#     # 2. Perform the Move (Same as before, but using the smarter new_album_uri)
+#     update_q = _PREFIXES + f"""
+#     DELETE {{ ?oldAlbum music:hasTrack <{track_uri}> }}
+#     INSERT {{
+#         <{new_album_uri}> a music:Album ;
+#                          music:albumName "{new_album_name}" ;
+#                          music:slug "{new_slug}" .
+#         <{artist_uri}> music:hasAlbum <{new_album_uri}> .
+#         <{new_album_uri}> music:hasTrack <{track_uri}> .
+#     }} WHERE {{
+#         OPTIONAL {{ ?oldAlbum music:hasTrack <{track_uri}> }}
+#     }}
+#     """
+#     store.execute_sparql_update(update_q)
+#
+#     # 3. GARBAGE COLLECTION (Crucial: This will kill the duplicate once it's empty)
+#     cleanup_q = _PREFIXES + f"""
+#     DELETE {{ ?oa ?p ?o . ?s ?p2 ?oa }}
+#     WHERE {{
+#         ?oa a music:Album .
+#         FILTER NOT EXISTS {{ ?oa music:hasTrack ?anyTrack }}
+#         ?oa ?p ?o .
+#         OPTIONAL {{ ?s ?p2 ?oa }}
+#     }}
+#     """
+#     store.execute_sparql_update(cleanup_q)
+#
+#     if hasattr(get_artist_detail, "cache_clear"):
+#         get_artist_detail.cache_clear()
+#
+#     return True
+
+def update_track_album(track_uri: str, artist_uri: str, new_album_name: str) -> bool:
+    # 1. Clean URIs for SPARQL
+    t_uri = f"<{track_uri}>" if not track_uri.startswith("<") else track_uri
+    a_uri = f"<{artist_uri}>" if not artist_uri.startswith("<") else artist_uri
+
+    # 2. Check if the artist already has an album with this name
     check_q = _PREFIXES + f"""
-    SELECT ?existingAlbum WHERE {{
-        <{artist_uri}> music:hasAlbum ?existingAlbum .
-        ?existingAlbum music:albumName "{new_album_name}" .
+    SELECT ?albumUri WHERE {{
+        {a_uri} music:hasAlbum ?albumUri .
+        ?albumUri music:albumName "{new_album_name}" .
     }} LIMIT 1
     """
     res = store.execute_sparql(check_q)
 
     if res:
-        # If it exists, use that URI!
-        new_album_uri = str(res[0]['existingAlbum'])
+        # Album exists: use its existing URI
+        target_album_uri = f"<{res[0]['albumUri']}>"
     else:
-        # If it doesn't exist, only THEN create a new slug-based URI
-        new_slug = new_album_name.lower().replace(" ", "_").strip()
-        new_album_uri = f"http://musickg.org/album/{new_slug}"
+        # Album is new: define slug and URI inside this block
+        safe_name = quote(new_album_name.lower().replace(" ", "_"))
+        artist_part = _slug(artist_uri.strip("<>"))
+        generated_slug = f"{artist_part}_{safe_name}"
+        target_album_uri = f"<http://musickg.org/album/{generated_slug}>"
 
-    # 2. Perform the Move (Same as before, but using the smarter new_album_uri)
+        # Create the new album node first
+        insert_alb_q = _PREFIXES + f"""
+        INSERT DATA {{
+            {target_album_uri} a music:Album ;
+                               music:albumName "{new_album_name}" ;
+                               music:slug "{generated_slug}" .
+            {a_uri} music:hasAlbum {target_album_uri} .
+        }}
+        """
+        store.execute_sparql_update(insert_alb_q)
+
+    # 3. Execute the move:
+    # - Remove old hasTrack link
+    # - Add new hasTrack link
+    # - Update the string property on the track itself
     update_q = _PREFIXES + f"""
-    DELETE {{ ?oldAlbum music:hasTrack <{track_uri}> }}
-    INSERT {{
-        <{new_album_uri}> a music:Album ;
-                         music:albumName "{new_album_name}" ;
-                         music:slug "{new_slug}" .
-        <{artist_uri}> music:hasAlbum <{new_album_uri}> .
-        <{new_album_uri}> music:hasTrack <{track_uri}> .
-    }} WHERE {{
-        OPTIONAL {{ ?oldAlbum music:hasTrack <{track_uri}> }}
+    DELETE {{ 
+        ?oldAlbum music:hasTrack {t_uri} . 
+        {t_uri} music:albumName ?oldName .
     }}
-    """
-    store.execute_sparql_update(update_q)
-
-    # 3. GARBAGE COLLECTION (Crucial: This will kill the duplicate once it's empty)
-    cleanup_q = _PREFIXES + f"""
-    DELETE {{ ?oa ?p ?o . ?s ?p2 ?oa }}
+    INSERT {{ 
+        {target_album_uri} music:hasTrack {t_uri} . 
+        {t_uri} music:albumName "{new_album_name}" .
+    }}
     WHERE {{
-        ?oa a music:Album .
-        FILTER NOT EXISTS {{ ?oa music:hasTrack ?anyTrack }}
-        ?oa ?p ?o .
-        OPTIONAL {{ ?s ?p2 ?oa }}
+        OPTIONAL {{ ?oldAlbum music:hasTrack {t_uri} . }}
+        OPTIONAL {{ {t_uri} music:albumName ?oldName . }}
     }}
     """
-    store.execute_sparql_update(cleanup_q)
 
-    if hasattr(get_artist_detail, "cache_clear"):
-        get_artist_detail.cache_clear()
+    success = store.execute_sparql_update(update_q)
 
-    return True
+    # Debug logging to terminal
+    if success:
+        log.info(f"Successfully moved track {track_uri} to album {new_album_name}")
+
+    return success
+
+def update_album_year(album_uri: str, new_year: int) -> bool:
+    """
+    Updates the music:releaseYear for a specific album node in GraphDB.
+    Uses DELETE/INSERT to ensure the old year is replaced rather than duplicated.
+    """
+    if not album_uri.startswith("<"):
+        album_uri = f"<{album_uri}>"
+
+    prefixes = """
+    PREFIX music: <http://musickg.org/ontology#>
+    PREFIX xsd:   <http://www.w3.org/2001/XMLSchema#>
+    """
+
+    update_q = prefixes + f"""
+    DELETE {{ {album_uri} music:releaseYear ?oldYear . }}
+    INSERT {{ {album_uri} music:releaseYear "{new_year}"^^xsd:integer . }}
+    WHERE  {{ 
+        OPTIONAL {{ {album_uri} music:releaseYear ?oldYear . }}
+    }}
+    """
+
+    try:
+        return store.execute_sparql_update(update_q)
+    except Exception as e:
+        log.error(f"SPARQL Update Error for album {album_uri}: {str(e)}")
+        return False
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 9. execute_raw_sparql

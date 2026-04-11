@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import toast from 'react-hot-toast'
-import { getAlbumDetail } from '../api'
+import { getAlbumDetail, updateAlbumYear } from '../api'
 import AudioFeatureBar from '../components/common/AudioFeatureBar'
 import { PageSkeleton } from '../components/common/LoadingSkeleton'
 import { formatMs } from '../utils/helpers'
@@ -12,6 +12,9 @@ export default function AlbumDetailPage() {
   const [album, setAlbum]   = useState(null)
   const [loading, setLoading] = useState(true)
 
+  const [isEditingYear, setIsEditingYear] = useState(false)
+  const [tempYear, setTempYear] = useState('')
+
   useEffect(() => {
     setLoading(true)
     getAlbumDetail(slug)
@@ -19,6 +22,21 @@ export default function AlbumDetailPage() {
       .catch(() => toast.error('Failed to load album'))
       .finally(() => setLoading(false))
   }, [slug])
+
+  const handleSaveYear = async () => {
+    try {
+      await updateAlbumYear({
+        albumUri: album.uri,
+        newYear: parseInt(tempYear)
+      });
+      // Update local state so UI refreshes immediately
+      setAlbum({ ...album, year: tempYear });
+      setIsEditingYear(false);
+      toast.success('Release year updated');
+    } catch (err) {
+      toast.error('Update failed');
+    }
+  }
 
   if (loading) return <PageSkeleton />
   if (!album) return (
@@ -31,20 +49,46 @@ export default function AlbumDetailPage() {
   return (
     <div className="max-w-4xl mx-auto px-6 py-8">
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
-        {/* Header */}
+
+        {/* Header Section */}
         <div className="bg-bg-card border border-border-col rounded-card p-6 mb-8 flex items-center gap-6">
           <div className="w-20 h-20 rounded-card bg-bg-hover flex items-center justify-center text-4xl shrink-0">💿</div>
+
           <div>
             <h1 className="text-3xl font-extrabold text-text-primary mb-1">{album.name}</h1>
             <Link to={`/artist/${album.artist_slug}`}
               className="text-accent hover:text-accent-hover transition-colors text-sm font-medium">
               {album.artist_name}
             </Link>
-            <p className="text-xs text-text-muted mt-1">{album.year} · {album.track_count} tracks</p>
+            <div className="flex items-center gap-2 mt-1">
+              {isEditingYear ? (
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    autoFocus
+                    value={tempYear}
+                    onChange={(e) => setTempYear(e.target.value)}
+                    className="bg-bg-primary border border-border-col rounded px-2 py-0.5 text-xs w-20 text-text-primary outline-none focus:border-accent"
+                  />
+                  <button onClick={handleSaveYear} className="text-[10px] text-accent font-bold uppercase hover:underline">Save</button>
+                  <button onClick={() => setIsEditingYear(false)} className="text-[10px] text-text-muted font-bold uppercase hover:underline">Cancel</button>
+                </div>
+              ) : (
+                <p className="group text-xs text-text-muted flex items-center gap-2">
+                  <span>{album.year} · {album.track_count} tracks</span>
+                  <button
+                    onClick={() => { setTempYear(album.year); setIsEditingYear(true); }}
+                    className="opacity-0 group-hover:opacity-100 transition-opacity text-accent text-[10px]"
+                  >
+                    ✎ Edit Year
+                  </button>
+                </p>
+              )}
+            </div>
           </div>
         </div>
 
-        {/* Tracks */}
+        {/* Tracks List (Remaining code stays the same) */}
         <div className="bg-bg-card border border-border-col rounded-card overflow-hidden">
           <div className="px-5 py-3 border-b border-border-col">
             <h2 className="text-xs font-bold text-text-muted uppercase tracking-wider">Tracks</h2>
