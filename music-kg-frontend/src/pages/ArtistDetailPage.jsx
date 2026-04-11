@@ -366,7 +366,7 @@ export default function ArtistDetailPage() {
   {/* NEW */}
   const albumsWithTracks = allAlbums.map(album => ({
     ...album,
-    tracks: allTracks.filter(t => t.album_name === album.name)
+    tracks: allTracks.filter(t => t.album_uri === album.uri)
   }));
 
   return (

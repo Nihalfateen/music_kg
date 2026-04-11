@@ -205,7 +205,7 @@ def get_artist_detail(artist: str) -> Optional[Dict]:
 
     # Tracks by popularity
     tracks_q = _PREFIXES + f"""
-    SELECT ?trackUri ?trackName ?albumName ?popularity
+    SELECT ?trackUri ?trackName ?albumUri ?albumName ?popularity
            ?energy ?danceability ?valence ?tempo ?loudness
     WHERE {{
         ?trackUri music:performedBy {artist_ref} ;
@@ -236,7 +236,8 @@ def get_artist_detail(artist: str) -> Optional[Dict]:
             "slug":        _slug(str(r["trackUri"])),
             "name":        str(r["trackName"]),
             "popularity":  r.get("popularity", 0),
-            "album_name":  r.get("albumName", 'Single'),
+            "album_uri":  str(r.get("albumUri", "")),
+            "album_name": r.get("albumName", 'Single'),
             "audio_features": {
                 "energy":       r.get("energy"),
                 "danceability": r.get("danceability"),
@@ -342,13 +343,15 @@ def get_album_detail(album_slug: str) -> Optional[Dict]:
         return None
 
     r0 = info[0]
+    artist_uri = str(r0["artistUri"])
+
     tracks_q = _PREFIXES + f"""
     SELECT DISTINCT ?trackUri ?trackName ?popularity ?duration
            ?energy ?danceability ?valence ?tempo ?loudness
     WHERE {{
         ?trackUri a music:Track ;
                   music:trackName ?trackName ;
-                  music:performedBy {actual_uri} .
+                  music:performedBy <{artist_uri}> .
 
         # JOIN the album name so the table can see it
         OPTIONAL {{
@@ -892,60 +895,59 @@ def create_artist_node(name: str, genre: str):
     return success, slug
 
 
-def create_songs_bulk(artist, songs_list):
-    # 1. Normalize identifiers
-    artist_slug = unquote(artist).strip()
-    artist_uri = f"<http://musickg.org/artist/{artist_slug}>"
-    created_count = 0
-
-    for song in songs_list:
-        song_name = song['name'].strip()
-        album_name = song.get('album', '').strip()
-
-        # Create a unique slug for the song
-        track_safe_name = quote(song_name.lower().replace(' ', '_'))
-        song_slug = f"{artist_slug}_{track_safe_name}"
-        track_uri = f"<http://musickg.org/track/{song_slug}>"
-
-        # 2. Check existence using SELECT (to avoid the 'results' error)
-        check_q = _PREFIXES + f"SELECT ?t WHERE {{ {track_uri} music:performedBy {artist_uri} . }} LIMIT 1"
-        if store.execute_sparql(check_q):
-            print(f"Skipping duplicate: {song_name}")
-            continue
-
-            # 3. Handle Album
-        album_triples = ""
-        if album_name:
-            album_safe_name = quote(album_name.lower().replace(' ', '_'))
-            album_slug = f"{artist_slug}_{album_safe_name}"
-            album_uri = f"<http://musickg.org/album/{album_slug}>"
-            album_triples = f"""
-                {album_uri} a music:Album ; 
-                            music:albumName \"\"\"{album_name}\"\"\" .
-                {album_uri} music:hasTrack {track_uri} .
-                {artist_uri} music:hasAlbum {album_uri} .
-            """
-
-        # 4. FIXED CONSTRUCT: Added 'rdf:' prefix and triple quotes
-        update_q = f"""
-            PREFIX music: <http://musickg.org/ontology#>
-            PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
-            INSERT DATA {{
-                {track_uri} rdf:type music:Track .
-                {track_uri} music:trackName \"\"\"{song_name}\"\"\" .
-                {track_uri} music:slug "{song_slug}" .
-                {track_uri} music:performedBy {artist_uri} .
-                {album_triples}
-            }}
-        """
-
-        if store.execute_sparql_update(update_q):
-            created_count += 1
-
-        if hasattr(get_artist_detail, "cache_clear"):
-            get_artist_detail.cache_clear()
-
-    return created_count > 0, created_count
+# def create_songs_bulk(artist, songs_list):
+#     artist_slug = unquote(artist).strip()
+#     artist_uri = f"<http://musickg.org/artist/{artist_slug}>"
+#     created_count = 0
+#
+#     for song in songs_list:
+#         song_name = song['name'].strip()
+#         album_name = song.get('album', '').strip()
+#
+#         # Create a unique slug for the song
+#         track_safe_name = quote(song_name.lower().replace(' ', '_'))
+#         song_slug = f"{artist_slug}_{track_safe_name}"
+#         track_uri = f"<http://musickg.org/track/{song_slug}>"
+#
+#         # Check existence using SELECT (to avoid the 'results' error)
+#         check_q = _PREFIXES + f"SELECT ?t WHERE {{ {track_uri} music:performedBy {artist_uri} . }} LIMIT 1"
+#         if store.execute_sparql(check_q):
+#             print(f"Skipping duplicate: {song_name}")
+#             continue
+#
+#             # 3. Handle Album
+#         album_triples = ""
+#         if album_name:
+#             album_safe_name = quote(album_name.lower().replace(' ', '_'))
+#             album_slug = f"{artist_slug}_{album_safe_name}"
+#             album_uri = f"<http://musickg.org/album/{album_slug}>"
+#             album_triples = f"""
+#                 {album_uri} a music:Album ;
+#                             music:albumName \"\"\"{album_name}\"\"\" .
+#                 {album_uri} music:hasTrack {track_uri} .
+#                 {artist_uri} music:hasAlbum {album_uri} .
+#             """
+#
+#         # 4. FIXED CONSTRUCT: Added 'rdf:' prefix and triple quotes
+#         update_q = f"""
+#             PREFIX music: <http://musickg.org/ontology#>
+#             PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+#             INSERT DATA {{
+#                 {track_uri} rdf:type music:Track .
+#                 {track_uri} music:trackName \"\"\"{song_name}\"\"\" .
+#                 {track_uri} music:slug "{song_slug}" .
+#                 {track_uri} music:performedBy {artist_uri} .
+#                 {album_triples}
+#             }}
+#         """
+#
+#         if store.execute_sparql_update(update_q):
+#             created_count += 1
+#
+#         if hasattr(get_artist_detail, "cache_clear"):
+#             get_artist_detail.cache_clear()
+#
+#     return created_count > 0, created_count
 
 
 # def update_track_album(track_uri: str, artist_uri: str, new_album_name: str):
@@ -990,6 +992,62 @@ def create_songs_bulk(artist, songs_list):
 #         get_artist_detail.cache_clear()
 #
 #     return True
+
+def create_songs_bulk(artist_slug, songs_list):
+    artist_slug = unquote(artist_slug).strip()
+    artist_uri = f"http://musickg.org/artist/{artist_slug}"
+    created_count = 0
+
+    for song in songs_list:
+        song_name = song['name'].strip()
+        album_name = song.get('album', '').strip()
+
+        # Track URI
+        track_safe_name = quote(song_name.lower().replace(' ', '_'))
+        song_slug = f"{artist_slug}_{track_safe_name}"
+        track_uri = f"http://musickg.org/track/{song_slug}"
+
+        # 1. Smart Album Check (The "Twin" Fix)
+        # We look for ANY album linked to this artist that matches the name
+        album_check_q = _PREFIXES + f"""
+            SELECT ?alb WHERE {{ 
+                <{artist_uri}> music:hasAlbum ?alb . 
+                ?alb music:albumName ?name .
+                FILTER(LCASE(STR(?name)) = "{album_name.lower()}")
+            }} LIMIT 1
+        """
+        existing_alb = store.execute_sparql(album_check_q)
+
+        if existing_alb:
+            # Use the existing URI found in the graph
+            album_uri = str(existing_alb[0]['alb'])
+        else:
+            # Only create a new one if it truly doesn't exist
+            album_safe_name = quote(album_name.lower().replace(' ', '_'))
+            album_uri = f"http://musickg.org/album/{album_safe_name}"
+
+        # 2. Combined INSERT
+        update_q = _PREFIXES + f"""
+            INSERT DATA {{
+                <{track_uri}> rdf:type music:Track ;
+                             music:trackName \"\"\"{song_name}\"\"\" ;
+                             music:slug "{song_slug}" ;
+                             music:performedBy <{artist_uri}> ;
+                             music:popularity 0 . 
+
+                <{album_uri}> rdf:type music:Album ; 
+                             music:albumName \"\"\"{album_name}\"\"\" .
+                <{album_uri}> music:hasTrack <{track_uri}> .
+                <{artist_uri}> music:hasAlbum <{album_uri}> .
+            }}
+        """
+        if store.execute_sparql_update(update_q):
+            created_count += 1
+
+    if hasattr(get_artist_detail, "cache_clear"):
+        get_artist_detail.cache_clear()
+
+    return created_count > 0, created_count
 
 def update_track_album(track_uri: str, artist_uri: str, new_album_name: str):
     # 1. CHECK FOR EXISTING ALBUM
