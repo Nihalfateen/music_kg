@@ -30,14 +30,19 @@ api.interceptors.response.use(
 export const getStats          = ()           => api.get('/stats/')
 export const getArtists        = (params)     => api.get('/artists/', { params })
 // export const getArtistDetail   = (slug)       => api.get(`/artists/${encodeURIComponent(slug)}/`)
-// src/api/index.js
 export const getArtistDetail = (slug) =>
   api.get(`/artists/${slug}/`, {
     params: {
       _t: Date.now()
     }
   });
-export const getAlbumDetail    = (slug)       => api.get(`/albums/${encodeURIComponent(slug)}/`)
+// export const getAlbumDetail    = (slug)       => api.get(`/albums/${encodeURIComponent(slug)}/`)
+export const getAlbumDetail = (slug) =>
+  api.get(`/albums/${encodeURIComponent(slug)}/`, {
+    params: {
+      _t: Date.now() // Bypass the 1-hour Django cache
+    }
+  });
 export const getTracks         = (params)     => api.get('/tracks/', { params })
 export const searchAll         = (q, params)  => api.get('/search/', { params: { q, ...params } })
 export const postSparql        = (query)      => api.post('/sparql/', { query })

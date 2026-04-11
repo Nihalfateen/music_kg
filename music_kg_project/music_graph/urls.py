@@ -11,16 +11,13 @@ urlpatterns = [
 
     # Artists — use re_path to support special chars like * & + in artist names
     path('artists/', views.ArtistListView.as_view(), name='artist-list'),
-    re_path(r'^artists/(?P<slug>.+)/$',
-            views.ArtistDetailView.as_view(),    name='artist-detail'),
+    re_path(r'^artists/(?P<slug>.+)/$', views.ArtistDetailView.as_view(), name='artist-detail'),
 
     # Albums
-    re_path(r'^albums/(?P<slug>.+)/$',
-            views.AlbumDetailView.as_view(),     name='album-detail'),
+    re_path(r'^albums/(?P<slug>.+)/$', views.AlbumDetailView.as_view(), name='album-detail'),
 
     # Tracks
-    path('tracks/',                     views.TrackListView.as_view(),
-         name='track-list'),
+    path('tracks/', views.TrackListView.as_view(), name='track-list'),
 
     # Search
     path('search/',
