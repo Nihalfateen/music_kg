@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useParams, Link } from 'react-router-dom'
+import {useParams, Link, useNavigate} from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   RadarChart, Radar, PolarGrid, PolarAngleAxis,
@@ -45,7 +45,7 @@ function SortableTable({ tracks, onEdit }) {
           <tr className="border-b border-border-col">
             <th className="text-left text-xs text-text-muted uppercase tracking-wider pb-2 w-8">#</th>
             <th className="text-left text-xs text-text-muted uppercase tracking-wider pb-2">Track</th>
-            <th className="text-left text-xs text-text-muted uppercase tracking-wider pb-2">Album</th>
+            {/*<th className="text-left text-xs text-text-muted uppercase tracking-wider pb-2">Album</th>*/}
             <Th k="album_name" label="Album"/>
             <Th k="popularity"   label="Pop" />
             <Th k="energy"       label="Energy" />
@@ -247,14 +247,16 @@ export default function ArtistDetailPage() {
 
   {/* NEW */}
   const [showAddSongs, setShowAddSongs] = useState(false)
-  const [editingTrack, setEditingTrack] = useState(null);
-  const [newAlbumName, setNewAlbumName] = useState("");
+  const [editingTrack, setEditingTrack] = useState(null)
+  const [newAlbumName, setNewAlbumName] = useState("")
+  const [showAddForm, setShowAddForm] = useState(false)
+  const [newTrack, setNewTrack] = useState({ name: '', album: ''})
 
   useEffect(() => {
     setLoading(true)
     Promise.all([
       getArtistDetail(slug),
-      getRecommendations(slug).catch(() => ({ data: null })),
+      getRecommendations(slug).catch(() => ({ data: { similar_artists: [], recommended_tracks: [] } })),
     ])
       .then(([artRes, recRes]) => {
         setArtist(artRes.data)
@@ -264,34 +266,49 @@ export default function ArtistDetailPage() {
       .finally(() => setLoading(false))
   }, [slug])
 
-    {/* NEW */}
-    const handleUpdateAlbum = async () => {
-      if (!newAlbumName.trim()) return toast.error("Please enter an album name")
+  {/* NEW */}
+  const handleUpdateAlbum = async () => {
+    if (!newAlbumName.trim()) return toast.error("Please enter an album name")
 
-      try {
-        await updateTrackMetadata({
-          trackUri: editingTrack.uri,
-          artistUri: artist.uri,
-          newAlbumName: newAlbumName
-        });
+    try {
+      await updateTrackMetadata({
+        trackUri: editingTrack.uri,
+        artistUri: artist.uri,
+        newAlbumName: newAlbumName
+      });
 
-        const res = await getArtistDetail(slug);
+      const res = await getArtistDetail(slug);
 
-        setArtist(res.data);
+      setArtist(res.data);
 
-        setEditingTrack(null);
-        toast.success('Sync complete!');
+      setEditingTrack(null);
+      toast.success('Sync complete!');
 
-        // const updatedData = await getArtistDetail(slug);
-        // setArtist(updatedData.data);
-        //
-        // toast.success('Graph updated! Album consolidated.');
-        // setEditingTrack(null);
-      } catch (err) {
-        toast.error('Failed to update the Knowledge Graph');
-        console.error(err);
-      }
+      // const updatedData = await getArtistDetail(slug);
+      // setArtist(updatedData.data);
+      //
+      // toast.success('Graph updated! Album consolidated.');
+      // setEditingTrack(null);
+    } catch (err) {
+      toast.error('Failed to update the Knowledge Graph');
+      console.error(err);
     }
+  }
+
+  // const handleAddTrack = async () => {
+  //   try {
+  //     await addTrack({
+  //       artistUri: artist.uri,
+  //       trackName: newTrack.name,
+  //       albumName: newTrack.album
+  //     });
+  //     toast.success("Track added!");
+  //     window.location.reload(); // Refresh to show the new data
+  //   } catch (err) {
+  //     toast.error("Failed to add track");
+  //   }
+  // }
+
 
   if (loading) return <PageSkeleton />
   if (!artist) return (
@@ -367,7 +384,7 @@ export default function ArtistDetailPage() {
   const albumsWithTracks = allAlbums.map(album => ({
     ...album,
     tracks: allTracks.filter(t => t.album_uri === album.uri)
-  }));
+  }))
 
   return (
     <div className="max-w-6xl mx-auto px-6 py-8">
@@ -392,13 +409,9 @@ export default function ArtistDetailPage() {
                 ))}
               </div>
 
-              {/* NEW */}
-              <p className="text-sm text-text-muted">
-                {albumsWithTracks.length} Releases · {allTracks.length} Total Tracks
-              </p>
               <div className="flex items-center gap-6 text-sm text-text-secondary flex-wrap">
                 {allAlbums.length > 0 && <span>💿 {allAlbums.length} album{allAlbums.length !== 1 ? 's' : ''}</span>}
-                <span>🎵 {artist.allTracks?.length || 0}+ tracks</span>
+                <span>🎵 {allTracks.length || 0} tracks</span>
                 {artist.similar_artists?.length > 0 && <span>🔗 {artist.similar_artists.length} similar</span>}
                 {artist.dbpedia_uri && (
                   <a href={artist.dbpedia_uri} target="_blank" rel="noreferrer"
@@ -557,17 +570,88 @@ export default function ArtistDetailPage() {
       )}
 
       {/* ── Songs Table ──────────────────────────────────────────────────────── */}
-      {allTracks.length > 0 && (
-        <section className="mb-12">
-          <div className="flex items-center justify-between mb-6">
-            <h2 className="text-2xl font-bold text-text-primary">All Songs</h2>
-            <button
-              onClick={() => setShowAddSongs(true)}
-              className="text-xs font-bold text-accent hover:underline"
-            >
-              + Add New Song
-            </button>
-          </div>
+      {/*{allTracks.length < 0 && (*/}
+      {/*  <div className="mt-8 mb-12">*/}
+      {/*    <div className="flex justify-between items-center mb-6">*/}
+      {/*      <h2 className="text-2xl font-bold text-text-primary">All Songs</h2>*/}
+      {/*      <button*/}
+      {/*        onClick={() => setShowAddForm(!showAddForm)}*/}
+      {/*        className="text-xs bg-accent/10 text-accent px-3 py-1 rounded-full hover:bg-accent hover:text-white transition-all font-bold"*/}
+      {/*      >*/}
+      {/*        {showAddForm ? 'Cancel' : '+ Add New Track'}*/}
+      {/*      </button>*/}
+      {/*    </div>*/}
+
+      {/*    /!* Inline Add Form *!/*/}
+      {/*    {showAddForm && (*/}
+      {/*      <div className="bg-bg-card border border-accent/20 p-4 rounded-card mb-6 flex gap-4 items-end animate-in fade-in slide-in-from-top-2">*/}
+      {/*        <div className="flex-1">*/}
+      {/*          <label className="block text-[10px] uppercase font-bold text-text-muted mb-1">Track Name</label>*/}
+      {/*          <input*/}
+      {/*            className="w-full bg-bg-primary border border-border-col rounded p-2 text-sm outline-none focus:border-accent text-text-primary"*/}
+      {/*            placeholder="e.g. Willow"*/}
+      {/*            value={newTrack.name}*/}
+      {/*            onChange={e => setNewTrack({ ...newTrack, name: e.target.value })}*/}
+      {/*          />*/}
+      {/*        </div>*/}
+      {/*        <div className="flex-1">*/}
+      {/*          <label className="block text-[10px] uppercase font-bold text-text-muted mb-1">Album Name (Optional)</label>*/}
+      {/*          <input*/}
+      {/*            className="w-full bg-bg-primary border border-border-col rounded p-2 text-sm outline-none focus:border-accent text-text-primary"*/}
+      {/*            placeholder="e.g. Evermore"*/}
+      {/*            value={newTrack.album}*/}
+      {/*            onChange={e => setNewTrack({ ...newTrack, album: e.target.value })}*/}
+      {/*          />*/}
+      {/*        </div>*/}
+      {/*        <button*/}
+      {/*          onClick={handleAddTrack}*/}
+      {/*          className="bg-accent text-bg-primary px-6 py-2 rounded font-bold text-sm h-[38px] hover:bg-accent-hover transition-colors"*/}
+      {/*        >*/}
+      {/*          Save*/}
+      {/*        </button>*/}
+      {/*      </div>*/}
+      {/*    )}*/}
+
+
+      {/*{allTracks.length > 0 && (*/}
+      {/*  <section className="mb-12">*/}
+      {/*    <div className="flex items-center justify-between mb-6">*/}
+      {/*      <h2 className="text-2xl font-bold text-text-primary">All Songs</h2>*/}
+      {/*      <button*/}
+      {/*        onClick={() => setShowAddSongs(true)}*/}
+      {/*        className="text-xs font-bold text-accent hover:underline"*/}
+      {/*      >*/}
+      {/*        + Add New Song*/}
+      {/*      </button>*/}
+      {/*    </div>*/}
+      {/*    <div className="bg-bg-card border border-border-col rounded-card p-4">*/}
+      {/*      <SortableTable*/}
+      {/*        tracks={allTracks}*/}
+      {/*        onEdit={(t) => {*/}
+      {/*          setEditingTrack(t);*/}
+      {/*          setNewAlbumName(t.album_name || "");*/}
+      {/*        }}*/}
+      {/*      />*/}
+      {/*    </div>*/}
+      {/*  </section>*/}
+      {/*)}*/}
+      {/*</div>*/}
+      {/*)}*/}
+
+      {/* ── Songs Section ──────────────────────────────────────────────────────── */}
+      <section className="mt-8 mb-12">
+        {/* Header: Title and the primary Modal Button */}
+        <div className="flex justify-between items-center mb-6">
+          <h2 className="text-2xl font-bold text-text-primary">All Songs</h2>
+          <button
+            onClick={() => setShowAddSongs(true)}
+            className="text-xs bg-accent text-bg-primary px-4 py-2 rounded-pill hover:bg-accent-hover transition-all font-bold shadow-md"
+          >
+            + Add Songs
+          </button>
+        </div>
+
+        {allTracks.length > 0 ? (
           <div className="bg-bg-card border border-border-col rounded-card p-4">
             <SortableTable
               tracks={allTracks}
@@ -577,8 +661,27 @@ export default function ArtistDetailPage() {
               }}
             />
           </div>
-        </section>
-      )}
+        ) : (
+          <div className="text-center py-16 bg-bg-card rounded-card border border-dashed border-border-col">
+            <div className="text-4xl mb-4 opacity-30">💿</div>
+            <p className="text-text-muted text-sm mb-6">This artist has no tracks in the Knowledge Graph yet.</p>
+          </div>
+        )}
+
+        {showAddSongs && (
+          <AddSongsModal
+            artist={artist}
+            onClose={() => setShowAddSongs(false)}
+            onSuccess={async () => {
+              setShowAddSongs(false);
+              const res = await getArtistDetail(slug);
+              setArtist(res.data); // Refresh data from backend
+              toast.success("Knowledge Graph updated!");
+            }}
+          />
+        )}
+      </section>
+
 
       {/* ── Similar Artists ───────────────────────────────────────────────────── */}
       {recs?.similar_artists?.length > 0 && (
@@ -634,6 +737,7 @@ export default function ArtistDetailPage() {
           </div>
         </section>
       )}
+
       {/* ── Modals ───────────────────────────────────────────────────────────── */}
       <AnimatePresence>
         {editingTrack && (

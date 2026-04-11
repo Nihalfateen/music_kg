@@ -9,6 +9,7 @@ urlpatterns = [
     path('songs/bulk-create/', views.api_create_songs_bulk, name='api_create_songs_bulk'),
     path('tracks/update-album/', views.update_album_view, name='update_album_view'),
     path('albums/update-year/', views.update_album_year, name='update_album_year'),
+    # path('tracks/add/', views.add_track_view, name='add_track_view'),
 
     # Artists — use re_path to support special chars like * & + in artist names
     path('artists/', views.ArtistListView.as_view(), name='artist-list'),

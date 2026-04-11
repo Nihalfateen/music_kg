@@ -56,5 +56,6 @@ export const createArtist = (data) => api.post('/artists/create/', data)
 export const createSongsBulk = (data) => api.post('/songs/bulk-create/', data)
 export const updateTrackMetadata = (data) => api.post('/tracks/update-album/', data)
 export const updateAlbumYear = (data) => api.post('/albums/update-year/', data)
+// export const addTrack = (data) => api.post('/tracks/add/', data)
 
 export default api

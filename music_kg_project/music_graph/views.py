@@ -35,6 +35,16 @@ log = logging.getLogger(__name__)
 
 CACHE_TTL = 3600  # 1 hour
 
+def api_home(request):
+    return JsonResponse({
+        "project": "Music Knowledge Graph API",
+        "status": "Online",
+        "endpoints": {
+            "api_root": "/api/",
+            "admin": "/admin/",
+            "health_check": "/health/"
+        }
+    })
 
 def _timed_response(data: Union[dict, list], t0: float, status_code=200) -> Response:
     """Wrap data with execution_time_ms field."""
@@ -444,3 +454,19 @@ def update_album_year(request):
     except Exception as e:
         print(f"Update Album Year Error: {str(e)}")
         return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+
+# @csrf_exempt
+# def add_track_view(request):
+#     try:
+#         data = json.loads(request.body)
+#         success = sq.create_track_for_artist(
+#             data['artistUri'],
+#             data['trackName'],
+#             data.get('albumName')
+#         )
+#         if success:
+#             return JsonResponse({'status': 'success'})
+#         return JsonResponse({'status': 'error', 'message': 'SPARQL update failed'}, status=500)
+#     except Exception as e:
+#         print(f"ADD TRACK ERROR: {e}")  # This will show the error in your terminal
+#         return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
