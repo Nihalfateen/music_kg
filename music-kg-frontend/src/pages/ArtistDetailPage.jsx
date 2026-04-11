@@ -6,7 +6,7 @@ import {
   ResponsiveContainer
 } from 'recharts'
 import toast from 'react-hot-toast'
-import { getArtistDetail, getRecommendations, updateTrackMetadata } from '../api'
+import { getArtistDetail, getRecommendations, updateTrackMetadata, deleteTrack} from '../api'
 import AudioFeatureBar from '../components/common/AudioFeatureBar'
 import { PageSkeleton } from '../components/common/LoadingSkeleton'
 import { hashColor, formatMs } from '../utils/helpers'
@@ -14,7 +14,7 @@ import { hashColor, formatMs } from '../utils/helpers'
 import AddSongsModal from "../components/modals/AddSongsModal.jsx";
 
 // ── Sortable tracks table ─────────────────────────────────────────────────────
-function SortableTable({ tracks, onEdit }) {
+function SortableTable({ tracks, onEdit, onDelete }) {
   const [sortKey, setSortKey] = useState('popularity')
   const [asc, setAsc] = useState(false)
 
@@ -52,7 +52,6 @@ function SortableTable({ tracks, onEdit }) {
             <Th k="danceability" label="Dance" />
             <Th k="valence"      label="Valence" />
             <Th k="duration_ms"  label="Time" />
-            <th className="text-right pb-2">Edit</th>
           </tr>
         </thead>
         <tbody>
@@ -89,6 +88,12 @@ function SortableTable({ tracks, onEdit }) {
                     onClick={() => onEdit(t)}
                     className="opacity-100 group-hover:opacity-100 p-1.5 hover:bg-accent/20 rounded-pill text-accent transition-all text-xs font-semibold"
                   >✎ Edit</button>
+                  <button
+                    onClick={() => onDelete(t)}
+                    className="p-1.5 hover:bg-red-500/20 rounded text-red-500 text-xs font-bold"
+                  >
+                    Delete
+                  </button>
                 </td>
               </tr>
             )
@@ -309,6 +314,29 @@ export default function ArtistDetailPage() {
   //   }
   // }
 
+  const handleDeleteTrack = async (track) => {
+    // 1. The Confirmation Pop-up
+    const confirmed = window.confirm(`Are you sure you want to delete "${track.name}"? This will permanently remove it from the Knowledge Graph.`);
+
+    if (!confirmed) return;
+
+    const tid = toast.loading("Deleting track...");
+    try {
+      // 2. Call your API (Ensure you've added deleteTrack to your api.js)
+      await deleteTrack( {trackUri: track.uri });
+
+      // 3. Refresh Data
+      const res = await getArtistDetail(slug);
+      setArtist(res.data);
+
+      toast.dismiss(tid);
+      toast.success("Track deleted and graph cleaned.");
+    } catch (err) {
+      toast.dismiss(tid);
+      toast.error("Failed to delete track.");
+      console.error(err);
+    }
+  }
 
   if (loading) return <PageSkeleton />
   if (!artist) return (
@@ -659,6 +687,7 @@ export default function ArtistDetailPage() {
                 setEditingTrack(t);
                 setNewAlbumName(t.album_name || "");
               }}
+              onDelete={handleDeleteTrack}
             />
           </div>
         ) : (

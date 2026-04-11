@@ -470,3 +470,26 @@ def update_album_year(request):
 #     except Exception as e:
 #         print(f"ADD TRACK ERROR: {e}")  # This will show the error in your terminal
 #         return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+
+@csrf_exempt  # Only if you haven't set up CSRF tokens for your React frontend yet
+def delete_track_view(request):
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+            track_uri = data.get('trackUri')
+
+            if not track_uri:
+                return JsonResponse({'error': 'No track URI provided'}, status=400)
+
+            # Call the query function we wrote in the previous step
+            success = sq.delete_track_from_graph(track_uri)
+
+            if success:
+                return JsonResponse({'message': 'Track deleted successfully'})
+            else:
+                return JsonResponse({'error': 'Failed to delete track from graph'}, status=500)
+
+        except Exception as e:
+            return JsonResponse({'error': str(e)}, status=500)
+
+    return JsonResponse({'error': 'Method not allowed'}, status=405)

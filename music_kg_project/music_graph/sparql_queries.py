@@ -1344,6 +1344,32 @@ def update_album_year(album_uri: str, new_year: int) -> bool:
 #     update_q = _PREFIXES + f"INSERT DATA {{ {' '.join(triples)} }}"
 #     return store.execute_sparql_update(update_q)
 
+def delete_track_from_graph(track_uri: str) -> bool:
+    """
+    Deletes the track and all its properties.
+    Then cleans up any albums that are now empty.
+    """
+    t_uri = f"<{track_uri}>" if not track_uri.startswith("<") else track_uri
+
+    # 1. Delete the track node and all incoming/outgoing links
+    delete_q = _PREFIXES + f"""
+    DELETE {{
+        {t_uri} ?p ?o .
+        ?subject ?p2 {t_uri} .
+    }}
+    WHERE {{
+        {t_uri} ?p ?o .
+        OPTIONAL {{ ?subject ?p2 {t_uri} . }}
+    }}
+    """
+    success = store.execute_sparql_update(delete_q)
+
+    if success:
+        if hasattr(get_artist_detail, "cache_clear"):
+            get_artist_detail.cache_clear()
+
+    return success
+
 # ─────────────────────────────────────────────────────────────────────────────
 # 9. execute_raw_sparql
 # ─────────────────────────────────────────────────────────────────────────────
