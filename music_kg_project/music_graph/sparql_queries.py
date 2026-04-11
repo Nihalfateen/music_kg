@@ -34,6 +34,11 @@ def _slug(uri: str) -> str:
     """Extract last path segment of a URI as a URL-safe slug."""
     return uri.rstrip("/").split("/")[-1]
 
+def _round(val, digits=4):
+    try:
+        return round(float(val), digits)
+    except (TypeError, ValueError):
+        return None
 
 def _artist_uri_from_slug(slug: str) -> str:
     return f"<http://musickg.org/artist/{slug}>"
@@ -200,13 +205,13 @@ def get_artist_detail(artist: str) -> Optional[Dict]:
 
     # Tracks by popularity
     tracks_q = _PREFIXES + f"""
-    SELECT ?trackUri ?trackName ?popularity
+    SELECT ?trackUri ?trackName ?albumName ?popularity
            ?energy ?danceability ?valence ?tempo ?loudness
     WHERE {{
-        ?trackUri a music:Track ;
-                  music:trackName ?trackName ;
-                  music:performedBy {artist_ref} .
+        ?trackUri music:performedBy {artist_ref} ;
+                  music:trackName ?trackName .
 
+        OPTIONAL {{ ?albumUri music:hasTrack ?trackUri ; music:albumName ?albumName . }}
         OPTIONAL {{ ?trackUri music:popularity ?popularity }}
 
         OPTIONAL {{
@@ -220,24 +225,28 @@ def get_artist_detail(artist: str) -> Optional[Dict]:
     }}
     ORDER BY DESC(?popularity)
     """
+
     top_tracks = []
     energy_sum = dance_sum = val_sum = tempo_sum = loud_sum = 0.0
     feat_count = 0
+
     for r in store.execute_sparql(tracks_q):
         t = {
             "uri":         str(r["trackUri"]),
             "slug":        _slug(str(r["trackUri"])),
             "name":        str(r["trackName"]),
             "popularity":  r.get("popularity", 0),
+            "album_name":  r.get("albumName", 'Single'),
             "audio_features": {
-                "energy":       r.get("energy", 0.0),
-                "danceability": r.get("danceability", 0.0),
-                "valence":      r.get("valence", 0.0),
-                "tempo":        r.get("tempo", 0.0),
-                "loudness":     r.get("loudness", 0.0),
+                "energy":       r.get("energy"),
+                "danceability": r.get("danceability"),
+                "valence":      r.get("valence"),
+                "tempo":        r.get("tempo"),
+                "loudness":     r.get("loudness"),
             },
         }
         top_tracks.append(t)
+
         if r.get("energy") is not None:
             energy_sum += float(r["energy"])
             dance_sum += float(r["danceability"])
@@ -247,7 +256,7 @@ def get_artist_detail(artist: str) -> Optional[Dict]:
             feat_count += 1
 
     avg_features = None
-    if feat_count:
+    if feat_count > 0:
         avg_features = {
             "energy":       round(energy_sum / feat_count, 4),
             "danceability": round(dance_sum / feat_count, 4),
@@ -264,8 +273,7 @@ def get_artist_detail(artist: str) -> Optional[Dict]:
     }} LIMIT 10
     """
     similar = [
-        {"uri": str(r["simUri"]), "slug": _slug(
-            str(r["simUri"])), "name": str(r["simName"])}
+        {"uri": str(r["simUri"]), "slug": _slug(str(r["simUri"])), "name": str(r["simName"])}
         for r in store.execute_sparql(similar_q)
     ]
 
@@ -284,35 +292,35 @@ def get_artist_detail(artist: str) -> Optional[Dict]:
     }
 
 
-def update_track_metadata(track_uri: str, new_album_name: str):
-    """Moves a track to a different album node."""
-    # 1. Prepare Identifiers
-    # We derive the artist slug from the track URI to keep it in the same family
-    # track_uri example: http://musickg.org/track/harry_styles_as_it_was
-    parts = track_uri.split('/')[-1].split('_')
-    artist_slug = "_".join(parts[:2])  # e.g., harry_styles
-
-    album_slug = quote(new_album_name.lower().replace(' ', '_'))
-    new_album_uri = f"http://musickg.org/album/{artist_slug}_{album_slug}"
-
-    # 2. The Move Query
-    update_q = f"""
-    PREFIX music: <http://musickg.org/ontology#>
-
-    # 1. Break the old connection
-    DELETE {{ ?oldAlbum music:hasTrack <{track_uri}> }}
-    WHERE  {{ ?oldAlbum music:hasTrack <{track_uri}> }};
-
-    # 2. Create the new connection
-    INSERT DATA {{
-        <{new_album_uri}> rdf:type music:Album ;
-                         music:albumName \"\"\"{new_album_name}\"\"\" ;
-                         music:slug "{artist_slug}_{album_slug}" .
-        <{new_album_uri}> music:hasTrack <{track_uri}> .
-        <http://musickg.org/artist/{artist_slug}> music:hasAlbum <{new_album_uri}> .
-    }}
-    """
-    return store.execute_sparql_update(update_q)
+# def update_track_metadata(track_uri: str, new_album_name: str):
+#     """Moves a track to a different album node."""
+#     # 1. Prepare Identifiers
+#     # We derive the artist slug from the track URI to keep it in the same family
+#     # track_uri example: http://musickg.org/track/harry_styles_as_it_was
+#     parts = track_uri.split('/')[-1].split('_')
+#     artist_slug = "_".join(parts[:2])  # e.g., harry_styles
+#
+#     album_slug = quote(new_album_name.lower().replace(' ', '_'))
+#     new_album_uri = f"http://musickg.org/album/{artist_slug}_{album_slug}"
+#
+#     # 2. The Move Query
+#     update_q = f"""
+#     PREFIX music: <http://musickg.org/ontology#>
+#
+#     # 1. Break the old connection
+#     DELETE {{ ?oldAlbum music:hasTrack <{track_uri}> }}
+#     WHERE  {{ ?oldAlbum music:hasTrack <{track_uri}> }};
+#
+#     # 2. Create the new connection
+#     INSERT DATA {{
+#         <{new_album_uri}> rdf:type music:Album ;
+#                          music:albumName \"\"\"{new_album_name}\"\"\" ;
+#                          music:slug "{artist_slug}_{album_slug}" .
+#         <{new_album_uri}> music:hasTrack <{track_uri}> .
+#         <http://musickg.org/artist/{artist_slug}> music:hasAlbum <{new_album_uri}> .
+#     }}
+#     """
+#     return store.execute_sparql_update(update_q)
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 3. get_album_detail
@@ -886,7 +894,7 @@ def create_artist_node(name: str, genre: str):
 
 def create_songs_bulk(artist, songs_list):
     # 1. Normalize identifiers
-    artist_slug = unquote(artist).strip().lower()
+    artist_slug = unquote(artist).strip()
     artist_uri = f"<http://musickg.org/artist/{artist_slug}>"
     created_count = 0
 
@@ -934,7 +942,104 @@ def create_songs_bulk(artist, songs_list):
         if store.execute_sparql_update(update_q):
             created_count += 1
 
+        if hasattr(get_artist_detail, "cache_clear"):
+            get_artist_detail.cache_clear()
+
     return created_count > 0, created_count
+
+
+# def update_track_album(track_uri: str, artist_uri: str, new_album_name: str):
+#     """
+#     Moves a track to a new album and deletes the old album if it becomes empty.
+#     """
+#     # 1. Prepare URIs
+#     new_slug = new_album_name.lower().replace(" ", "_").strip()
+#     new_album_uri = f"http://musickg.org/album/{new_slug}"
+#
+#     # 2. Perform the Move
+#     # We use execute_sparql_update (the method that already exists in your store)
+#     update_q = _PREFIXES + f"""
+#     DELETE {{ ?oldAlbum music:hasTrack <{track_uri}> }}
+#     INSERT {{
+#         <{new_album_uri}> a music:Album ;
+#                          music:albumName "{new_album_name}" .
+#         <{artist_uri}> music:hasAlbum <{new_album_uri}> .
+#         <{new_album_uri}> music:hasTrack <{track_uri}> .
+#     }} WHERE {{
+#         # This finds the old album dynamically inside the graph
+#         OPTIONAL {{ ?oldAlbum music:hasTrack <{track_uri}> }}
+#     }}
+#     """
+#     # CHANGE THIS LINE: use execute_sparql_update
+#     store.execute_sparql_update(update_q)
+#
+#     # 3. GARBAGE COLLECTION: Delete any album that is now empty
+#     cleanup_q = _PREFIXES + f"""
+#     DELETE {{ ?oa ?p ?o . ?s ?p2 ?oa }}
+#     WHERE {{
+#         ?oa a music:Album .
+#         FILTER NOT EXISTS {{ ?oa music:hasTrack ?anyTrack }}
+#         ?oa ?p ?o .
+#         OPTIONAL {{ ?s ?p2 ?oa }}
+#     }}
+#     """
+#     # CHANGE THIS LINE: use execute_sparql_update
+#     store.execute_sparql_update(cleanup_q)
+#
+#     if hasattr(get_artist_detail, "cache_clear"):
+#         get_artist_detail.cache_clear()
+#
+#     return True
+
+def update_track_album(track_uri: str, artist_uri: str, new_album_name: str):
+    # 1. CHECK FOR EXISTING ALBUM
+    # Ask the graph: "Does this artist already have an album with this exact name?"
+    check_q = _PREFIXES + f"""
+    SELECT ?existingAlbum WHERE {{
+        <{artist_uri}> music:hasAlbum ?existingAlbum .
+        ?existingAlbum music:albumName "{new_album_name}" .
+    }} LIMIT 1
+    """
+    res = store.execute_sparql(check_q)
+
+    if res:
+        # If it exists, use that URI!
+        new_album_uri = str(res[0]['existingAlbum'])
+    else:
+        # If it doesn't exist, only THEN create a new slug-based URI
+        new_slug = new_album_name.lower().replace(" ", "_").strip()
+        new_album_uri = f"http://musickg.org/album/{new_slug}"
+
+    # 2. Perform the Move (Same as before, but using the smarter new_album_uri)
+    update_q = _PREFIXES + f"""
+    DELETE {{ ?oldAlbum music:hasTrack <{track_uri}> }}
+    INSERT {{
+        <{new_album_uri}> a music:Album ;
+                         music:albumName "{new_album_name}" .
+        <{artist_uri}> music:hasAlbum <{new_album_uri}> .
+        <{new_album_uri}> music:hasTrack <{track_uri}> .
+    }} WHERE {{
+        OPTIONAL {{ ?oldAlbum music:hasTrack <{track_uri}> }}
+    }}
+    """
+    store.execute_sparql_update(update_q)
+
+    # 3. GARBAGE COLLECTION (Crucial: This will kill the duplicate once it's empty)
+    cleanup_q = _PREFIXES + f"""
+    DELETE {{ ?oa ?p ?o . ?s ?p2 ?oa }}
+    WHERE {{
+        ?oa a music:Album .
+        FILTER NOT EXISTS {{ ?oa music:hasTrack ?anyTrack }}
+        ?oa ?p ?o .
+        OPTIONAL {{ ?s ?p2 ?oa }}
+    }}
+    """
+    store.execute_sparql_update(cleanup_q)
+
+    if hasattr(get_artist_detail, "cache_clear"):
+        get_artist_detail.cache_clear()
+
+    return True
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 9. execute_raw_sparql

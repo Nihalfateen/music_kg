@@ -28,7 +28,7 @@ from music_graph.serializers import SPARQLQueryTemplateSerializer
 
 from music_graph.sparql_queries import create_artist_node
 from music_graph.sparql_queries import create_songs_bulk
-from music_graph.sparql_queries import update_track_metadata
+from music_graph.sparql_queries import update_track_album
 
 log = logging.getLogger(__name__)
 
@@ -373,12 +373,6 @@ class StatsView(APIView):
         return _timed_response(stats, t0)
 
 
-import json
-from django.http import JsonResponse
-from django.views.decorators.csrf import csrf_exempt
-from .sparql_queries import create_artist_node
-
-
 @csrf_exempt
 def api_create_artist(request):
     if request.method == 'POST':
@@ -411,11 +405,14 @@ def api_create_songs_bulk(request):
     return JsonResponse({"error": "Method not allowed"}, status=405)
 
 @csrf_exempt
-def api_update_track(request):
-    if request.method == 'POST':
+def update_album_view(request):
+    try:
         data = json.loads(request.body)
-        success = update_track_metadata(
-            track_uri=data.get('track_uri'),
-            new_album_name=data.get('new_album_name')
+        update_track_album(
+            data['trackUri'],
+            data['artistUri'],
+            data['newAlbumName']
         )
-        return JsonResponse({'success': success})
+        return JsonResponse({'status': 'success'})
+    except Exception as e:
+        return JsonResponse({'status': 'error', 'message': str(e)}, status=500)

@@ -29,7 +29,14 @@ api.interceptors.response.use(
 
 export const getStats          = ()           => api.get('/stats/')
 export const getArtists        = (params)     => api.get('/artists/', { params })
-export const getArtistDetail   = (slug)       => api.get(`/artists/${encodeURIComponent(slug)}/`)
+// export const getArtistDetail   = (slug)       => api.get(`/artists/${encodeURIComponent(slug)}/`)
+// src/api/index.js
+export const getArtistDetail = (slug) =>
+  api.get(`/artists/${slug}/`, {
+    params: {
+      _t: Date.now()
+    }
+  });
 export const getAlbumDetail    = (slug)       => api.get(`/albums/${encodeURIComponent(slug)}/`)
 export const getTracks         = (params)     => api.get('/tracks/', { params })
 export const searchAll         = (q, params)  => api.get('/search/', { params: { q, ...params } })
@@ -41,6 +48,7 @@ export const getAudioDistribution = ()        => api.get('/audio-distribution/')
 export const getSparqlTemplates   = (params)  => api.get('/sparql-templates/', { params })
 export const getRecommendations   = (slug)    => api.get(`/recommendations/${encodeURIComponent(slug)}/`)
 export const createArtist = (data) => api.post('/artists/create/', data)
-export const createSongsBulk = (data) => api.post('/songs/bulk-create/', data);
+export const createSongsBulk = (data) => api.post('/songs/bulk-create/', data)
+export const updateTrackMetadata = (data) => api.post('/tracks/update-album/', data)
 
 export default api

@@ -399,6 +399,5 @@ class _RDFStore:
             stats["graph_triples_live"] = len(self._graph)
         return stats
 
-
 # ── Module-level singleton ────────────────────────────────────────────────────
 store = _RDFStore()
