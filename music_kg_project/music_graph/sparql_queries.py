@@ -806,6 +806,22 @@ def get_similarity_edges(limit=2000) -> List[Dict]:
 # 9. Add and Update Information
 # ─────────────────────────────────────────────────────────────────────────────
 
+CLEANUP_EMPTY_ALBUMS_QUERY = _PREFIXES + """
+    DELETE {
+        ?alb ?p ?o .
+        ?s ?rel ?alb .
+    }
+    WHERE {
+        ?alb a music:Album .
+        FILTER NOT EXISTS { 
+            ?alb music:hasTrack ?track . 
+            ?track a music:Track . 
+        }
+        ?alb ?p ?o .
+        OPTIONAL { ?s ?rel ?alb . }
+    }
+"""
+
 def create_artist_node(name: str, genre: str):
     slug = quote(name.lower().strip().replace(" ", "_"))
     artist_uri = f"<http://musickg.org/artist/{slug}>"
@@ -940,23 +956,10 @@ def update_track_album(track_uri: str, artist_uri: str, new_album_name: str) -> 
     success = store.execute_sparql_update(update_q)
 
     if success:
-        cleanup_q = _PREFIXES + """
-            DELETE {
-                ?alb ?p ?o .
-                ?artist music:hasAlbum ?alb .
-            }
-            WHERE {
-                ?alb a music:Album .
-                ?alb ?p ?o .
-                OPTIONAL { ?artist music:hasAlbum ?alb . }
+        store.execute_sparql_update(CLEANUP_EMPTY_ALBUMS_QUERY)
 
-                FILTER NOT EXISTS { ?alb music:hasTrack ?anyTrack . }
-            }
-            """
-        store.execute_sparql_update(cleanup_q)
-
-    if success and hasattr(get_artist_detail, "cache_clear"):
-        get_artist_detail.cache_clear()
+        if hasattr(get_artist_detail, "cache_clear"):
+            get_artist_detail.cache_clear()
 
     return success
 
@@ -1008,6 +1011,7 @@ def delete_track_from_graph(track_uri: str) -> bool:
     success = store.execute_sparql_update(delete_q)
 
     if success:
+        store.execute_sparql_update(CLEANUP_EMPTY_ALBUMS_QUERY)
         if hasattr(get_artist_detail, "cache_clear"):
             get_artist_detail.cache_clear()
 
