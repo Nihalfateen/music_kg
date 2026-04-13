@@ -174,6 +174,15 @@ export default function SearchPage() {
     return (b.score || 0) - (a.score || 0)
   })
 
+
+  const hasExactMatch = results.some(item =>
+    item.name?.toLowerCase() === q.trim().toLowerCase() &&
+    item.type === 'artist'
+  );
+
+  const showAddBanner = q && !loading && !hasExactMatch
+      && (entityType === 'Artists' || entityType === 'Artists & Albums');
+
   return (
     <div className="flex min-h-screen">
       {/* Sidebar */}
@@ -258,15 +267,14 @@ export default function SearchPage() {
             </p>
         )}
 
-        {q && !loading && (
+        {showAddBanner && (
             <motion.div
                 initial={{opacity: 0, y: -10}}
                 animate={{opacity: 1, y: 0}}
                 className="mb-8 p-6 bg-accent/5 border border-accent/20 rounded-card flex flex-col md:flex-row items-center justify-between gap-4"
             >
               <div className="text-center md:text-left">
-                <h3 className="text-lg font-bold text-text-primary">Don't see the exact artist?</h3>
-                <p className="text-sm text-text-secondary">Help us build the graph by adding "{q}" manually.</p>
+                <h3 className="text-lg font-bold text-text-primary">Artist not found?</h3>
               </div>
               <button
                   onClick={() => setShowAddModal(true)}
