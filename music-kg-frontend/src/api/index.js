@@ -29,7 +29,7 @@ api.interceptors.response.use(
 
 export const getStats          = ()           => api.get('/stats/')
 export const getArtists        = (params)     => api.get('/artists/', { params })
-export const getArtistDetail = (slug) => api.get(`/artists/${encodeURIComponent$(slug)}/`, { params: { _t: Date.now() }});
+export const getArtistDetail = (slug) => api.get(`/artists/${encodeURIComponent(slug)}/`, { params: { _t: Date.now() }});
 export const getAlbumDetail = (slug) => api.get(`/albums/${encodeURIComponent(slug)}/`, { params: { _t: Date.now() }});
 export const getTracks         = (params)     => api.get('/tracks/', { params })
 export const searchAll         = (q, params)  => api.get('/search/', { params: { q, ...params } })

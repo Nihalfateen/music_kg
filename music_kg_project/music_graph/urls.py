@@ -5,11 +5,11 @@ from django.urls import path, re_path
 from music_graph import views
 
 urlpatterns = [
-    path('artists/create/', views.api_create_artist, name='api_create_artist'),
-    path('songs/bulk-create/', views.api_create_songs_bulk, name='api_create_songs_bulk'),
-    path('tracks/update-album/', views.update_album_view, name='update_album_view'),
-    path('albums/update-year/', views.update_album_year, name='update_album_year'),
-    path('tracks/delete/', views.delete_track_view, name='delete-track'),
+    path('artists/create/', views.ArtistCreateView.as_view(), name='api_create_artist'),
+    path('songs/bulk-create/', views.SongBulkCreateView.as_view(), name='api_create_songs_bulk'),
+    path('tracks/update-album/', views.TrackAlbumUpdateView.as_view(), name='update_album_view'),
+    path('albums/update-year/', views.AlbumYearUpdateView.as_view(), name='update_album_year'),
+    path('tracks/delete/', views.TrackDeleteView.as_view(), name='delete-track'),
 
     # Artists
     path('artists/', views.ArtistListView.as_view(), name='artist-list'),

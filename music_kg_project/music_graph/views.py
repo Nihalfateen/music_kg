@@ -391,97 +391,94 @@ class StatsView(APIView):
 # POST /api/tracks/delete/
 # ─────────────────────────────────────────────────────────────────────────────
 
-# update this to the correct methods after cleanup
+class ArtistCreateView(APIView):
+    def post(self, request):
+        t0 = time.time()
+        name = request.data.get('name')
+        genre = request.data.get('genre')
 
-@csrf_exempt
-def api_create_artist(request):
-    if request.method == 'POST':
-        data = json.loads(request.body)
-        name = data.get('name')
-        genre = data.get('genre')
+        if not name or not genre:
+            return Response({"error": "Name and genre are required."}, status=status.HTTP_400_BAD_REQUEST)
 
-        success, slug = create_artist_node(name, genre)
+        success, slug = sq.create_artist_node(name, genre)
 
         if success:
-            return JsonResponse({"status": "ok", "slug": slug}, status=201)
+            return _timed_response({"status": "ok", "slug": slug}, t0, status_code=status.HTTP_201_CREATED)
         else:
-            return JsonResponse({
+            return Response({
                 "error": "Artist already exists in the Knowledge Graph",
                 "slug": slug
-            }, status=409)
-
-    return JsonResponse({"error": "Method Not Allowed"}, status=405)
-
-@csrf_exempt
-def api_create_songs_bulk(request):
-    if request.method == 'POST':
-        data = json.loads(request.body)
-        artist_slug = data.get('artist_slug')
-        songs = data.get('songs', [])
-
-        success, count = create_songs_bulk(artist_slug, songs)
-        return JsonResponse({"status": "ok", "created": count}, status=201)
-    return JsonResponse({"error": "Method not allowed"}, status=405)
-
-@csrf_exempt
-def update_album_view(request):
-    try:
-        data = json.loads(request.body)
-        update_track_album(
-            data['trackUri'],
-            data['artistUri'],
-            data['newAlbumName']
-        )
-        return JsonResponse({'status': 'success'})
-    except Exception as e:
-        return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+            }, status=status.HTTP_409_CONFLICT)
 
 
-@csrf_exempt
-def update_album_year(request):
-    try:
-        data = json.loads(request.body)
-        album_uri = data.get('albumUri')
-        new_year_raw = data.get('newYear')
+class SongBulkCreateView(APIView):
+    def post(self, request):
+        t0 = time.time()
+        artist_slug = request.data.get('artist_slug')
+        songs = request.data.get('songs', [])
+
+        if not artist_slug:
+            return Response({"error": "artist_slug is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+        success, count = sq.create_songs_bulk(artist_slug, songs)
+        return _timed_response({"status": "ok", "created": count}, t0, status_code=status.HTTP_201_CREATED)
+
+
+class TrackAlbumUpdateView(APIView):
+    def post(self, request):
+        t0 = time.time()
+        try:
+            track_uri = request.data.get('trackUri')
+            artist_uri = request.data.get('artistUri')
+            new_album_name = request.data.get('newAlbumName')
+
+            if not all([track_uri, artist_uri, new_album_name]):
+                return Response({"error": "Missing required fields (trackUri, artistUri, newAlbumName)."},
+                                status=status.HTTP_400_BAD_REQUEST)
+
+            sq.update_track_album(track_uri, artist_uri, new_album_name)
+            return _timed_response({'status': 'success'}, t0)
+        except Exception as e:
+            return Response({'status': 'error', 'message': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+class AlbumYearUpdateView(APIView):
+    def post(self, request):
+        t0 = time.time()
+        album_uri = request.data.get('albumUri')
+        new_year_raw = request.data.get('newYear')
 
         if not album_uri or new_year_raw is None:
-            return JsonResponse({'status': 'error', 'message': 'Missing albumUri or newYear'}, status=400)
+            return Response({'status': 'error', 'message': 'Missing albumUri or newYear'},
+                            status=status.HTTP_400_BAD_REQUEST)
 
         try:
             new_year = int(float(new_year_raw))
         except (ValueError, TypeError):
-            return JsonResponse({'status': 'error', 'message': 'Year must be a valid number'}, status=400)
+            return Response({'status': 'error', 'message': 'Year must be a valid number'},
+                            status=status.HTTP_400_BAD_REQUEST)
 
         success = sq.update_album_year(album_uri, new_year)
 
         if success:
-            return JsonResponse({'status': 'success'})
+            return _timed_response({'status': 'success'}, t0)
         else:
-            return JsonResponse({'status': 'error', 'message': 'SPARQL update failed'}, status=500)
-
-    except Exception as e:
-        print(f"Update Album Year Error: {str(e)}")
-        return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+            return Response({'status': 'error', 'message': 'SPARQL update failed'},
+                            status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
-@csrf_exempt
-def delete_track_view(request):
-    if request.method == 'POST':
-        try:
-            data = json.loads(request.body)
-            track_uri = data.get('trackUri')
+class TrackDeleteView(APIView):
+    def post(self, request):
+        t0 = time.time()
+        track_uri = request.data.get('trackUri')
 
-            if not track_uri:
-                return JsonResponse({'error': 'No track URI provided'}, status=400)
+        if not track_uri:
+            return Response({'error': 'No track URI provided'}, status=status.HTTP_400_BAD_REQUEST)
 
-            success = sq.delete_track_from_graph(track_uri)
+        success = sq.delete_track_from_graph(track_uri)
 
-            if success:
-                return JsonResponse({'message': 'Track deleted successfully'})
-            else:
-                return JsonResponse({'error': 'Failed to delete track from graph'}, status=500)
-
-        except Exception as e:
-            return JsonResponse({'error': str(e)}, status=500)
-
-    return JsonResponse({'error': 'Method not allowed'}, status=405)
+        if success:
+            return _timed_response({'message': 'Track deleted successfully'}, t0)
+        else:
+            return Response({'error': 'Failed to delete track from graph'},
+                            status=status.HTTP_500_INTERNAL_SERVER_ERROR)
