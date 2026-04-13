@@ -77,7 +77,7 @@ export default function SearchPage() {
 
     if (!append) {
       setResults([]);
-      setTotal(0);
+      setPage(1);
     }
 
     // Prevent concurrent non-append calls
@@ -85,31 +85,27 @@ export default function SearchPage() {
     isFetching.current = true
     setLoading(true)
 
-    try {
-      let data = []
+    const typeMap = {
+      'Artists': 'artist',
+      'Albums': 'album',
+      'Tracks': 'track',
+      'Artists & Albums': 'artist_album',
+      'All': 'artist_album'
+    }
 
-      if (hasQuery) {
-        const res = await searchAll(query.trim(), { limit: 20 })
-        const allResults = res?.data?.results || []
-        console.log("Search Results from Backend:", allResults);
-        if (entityType === 'Artists & Albums') {
-          data = allResults.filter(r => r.type === 'artist' || r.type === 'album')
-        } else {
-          const typeMap = { Artists: 'artist', Albums: 'album', Tracks: 'track' }
-          data = allResults.filter(r => r.type === typeMap[entityType])
-        }
-      } else if (hasGenre) {
-        // Genre-only browse via artists
-        const res = await getArtists({
-          genre: selectedGenres[0],
-          page: pageNum,
-          page_size: 20,
-        })
-        data = (res?.data?.results || []).map(a => ({ ...a, type: 'artist' }))
+    try {
+      const searchParams = {
+        genre: selectedGenres[0] || null,
+        type: typeMap[entityType],
+        limit: 20,
+        page: pageNum
       }
 
-      setTotal(append ? (prev => prev + data.length) : data.length)
-      setHasMore(data.length === 20)
+      const res = await searchAll(query.trim(), searchParams)
+      const data = res?.data?.results || []
+
+      setTotal(append ? (prev => prev + data.length) : (res?.data?.count || data.length))
+      setHasMore(data.length >= 20)
       setResults(prev => append ? [...prev, ...data] : data)
     } catch (err) {
       console.error('[Search error]', err?.response?.data || err?.message || err)

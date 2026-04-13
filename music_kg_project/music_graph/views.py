@@ -170,14 +170,24 @@ class SearchView(APIView):
     def get(self, request):
         t0 = time.time()
         q = request.query_params.get("q", "").strip()
-        if not q:
+        genre = request.query_params.get("genre", "").strip()
+        e_type = request.query_params.get("type", "").strip()
+
+        page = int(request.query_params.get("page", 1))
+        limit = int(request.query_params.get("limit", 20))
+        offset = (page - 1) * limit
+
+        if not q and not genre:
             return Response(
                 {"error": "Provide ?q= query parameter."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
         limit = int(request.query_params.get("limit", 20))
-        results = sq.full_text_search(q, limit=limit)
+
+        search_data = sq.full_text_search(q, genre=genre or None, e_type=e_type or None, limit=limit, offset=offset)
+        results = search_data["results"]
+        total_count = search_data["total_count"]
 
         # Log the search
         entity_types = {}
@@ -191,12 +201,15 @@ class SearchView(APIView):
                 entity_types_found=entity_types,
             )
         except Exception:
-            pass  # Don't fail API because of logging
+            pass
 
         return _timed_response({
             "query":   q,
+            # "genre": genre,
             "results": results,
+            "total_count": total_count,
             "count":   len(results),
+            "page": page
         }, t0)
 
 

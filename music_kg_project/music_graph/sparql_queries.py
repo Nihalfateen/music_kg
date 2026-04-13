@@ -406,7 +406,7 @@ def get_tracks(
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 5. full_text_search
+# 5. build_search_index
 # ─────────────────────────────────────────────────────────────────────────────
 # In-memory search index — parsed directly from NT file (fastest possible)
 # ─────────────────────────────────────────────────────────────────────────────
@@ -452,7 +452,9 @@ def _build_search_index() -> List[Dict]:
     index: List[Dict] = []
     seen_artists: set = set()
     seen_albums:  set = set()
+
     artist_pos: Dict[str, int] = {}
+    album_pos: Dict[str, int] = {}
 
     try:
         with open(csv_path, encoding="latin-1", newline="") as f:
@@ -479,7 +481,7 @@ def _build_search_index() -> List[Dict]:
                         "type": "artist",
                         "uri":  f"http://musickg.org/artist/{slug}",
                         "slug": slug, "name": aname, "name_lower": aname.lower(),
-                        "extra_info": {"genres": [genre] if genre else []},
+                        "extra_info": {"genres": [genre] if genre else [], "popularity": pop},
                     })
                 elif genre:
                     pos = artist_pos.get(aname)
@@ -502,8 +504,12 @@ def _build_search_index() -> List[Dict]:
                         "type": "album",
                         "uri":  f"http://musickg.org/album/{aid}",
                         "slug": aid, "name": alname, "name_lower": alname.lower(),
-                        "extra_info": {"year": yr},
+                        "extra_info": {"year": yr, "genres": [genre] if genre else [], "popularity": pop},
                     })
+                elif genre and al_key in album_pos:
+                    pos = album_pos.get(al_key)
+                    gs = index[pos]["extra_info"].setdefault("genres", [])
+                    if genre not in gs: gs.append(genre)
 
                 if tid:
                     ts = _q(tid, safe="")
@@ -511,7 +517,7 @@ def _build_search_index() -> List[Dict]:
                         "type": "track",
                         "uri":  f"http://musickg.org/track/{ts}",
                         "slug": ts, "name": tname, "name_lower": tname.lower(),
-                        "extra_info": {"artist": aname, "popularity": pop},
+                        "extra_info": {"artist": aname, "popularity": pop, "genres": [genre] if genre else []},
                     })
     except Exception as e:
         _log.error(f"Search index build error: {e}")
@@ -544,64 +550,91 @@ def _get_search_index() -> List[Dict]:
 # 5. full_text_search  (fast in-memory)
 # ─────────────────────────────────────────────────────────────────────────────
 
-def full_text_search(query: str, limit: int = 20) -> List[Dict]:
-    if not query or not query.strip():
-        return []
+def full_text_search(query: str, genre: str = None, e_type: str = None, limit: int = 20, offset: int = 0) -> dict:
+    q_lower = query.strip().lower() if query else ""
 
-    q_lower = query.strip().lower()
+    if not q_lower and not genre:
+        return {"results": [], "total_count": 0}
+
+    type_filter = ""
+    if e_type == 'artist':
+        type_filter = 'FILTER(?type = "artist")'
+    elif e_type == 'album':
+        type_filter = 'FILTER(?type = "album")'
+    elif e_type == 'track':
+        type_filter = 'FILTER(?type = "track")'
+    elif e_type == 'artist_album':
+        type_filter = 'FILTER(?type = "artist" || ?type = "album")'
+
+    genre_sparql = f"?uri music:inGenre <http://musickg.org/genre/{genre.lower()}> ." if genre else ""
+    name_filter = f'FILTER(CONTAINS(LCASE(STR(?name)), "{q_lower}"))' if q_lower else ""
 
     graph_q = _PREFIXES + f"""
-    SELECT ?uri ?name ?type ?slug WHERE {{
+    SELECT DISTINCT ?uri ?name ?type ?slug ?pop WHERE {{
         {{
-            ?uri a music:Artist ; music:artistName ?name .
-            BIND("artist" AS ?type)
-        }} UNION {{
-            ?uri a music:Track ; music:trackName ?name .
-            BIND("track" AS ?type)
-        }} UNION {{
-            ?uri a music:Album ; music:albumName ?name .
-            BIND("album" AS ?type)
+            {{ ?uri a music:Artist ; music:artistName ?name . BIND("artist" AS ?type) OPTIONAL {{ ?uri music:popularity ?pop }} }}
+            UNION 
+            {{ ?uri a music:Track ; music:trackName ?name . BIND("track" AS ?type) OPTIONAL {{ ?uri music:popularity ?pop }} }}
+            UNION 
+            {{ ?uri a music:Album ; music:albumName ?name . BIND("album" AS ?type) OPTIONAL {{ ?uri music:releaseYear ?pop }} }}
         }}
+        
         ?uri music:slug ?slug .
-        FILTER(CONTAINS(LCASE(STR(?name)), "{q_lower}"))
-    }} LIMIT {limit}
+        {genre_sparql}
+        {name_filter}
+        {type_filter}
+    }} LIMIT 500
     """
     graph_rows = store.execute_sparql(graph_q)
-
     results = []
     seen_uris = set()
+
     for r in graph_rows:
         uri = str(r["uri"])
         seen_uris.add(uri)
         results.append({
-            "type": str(r["type"]),
-            "uri": uri,
-            "slug": str(r["slug"]),
-            "name": str(r["name"]),
+            "type": str(r["type"]), "uri": uri, "slug": str(r["slug"]), "name": str(r["name"]),
             "score": 1.0,
+            "popularity": _int(r.get("pop")),
             "extra_info": {"from_graph": True},
         })
 
     index = _get_search_index()
     for item in index:
         if item["uri"] in seen_uris: continue
-        if q_lower not in item["name_lower"]: continue
+
+        if e_type == 'artist_album':
+            if item["type"] not in ['artist', 'album']:
+                continue
+        elif e_type and item["type"] != e_type:
+            continue
+
+        if q_lower and q_lower not in item["name_lower"]:
+            continue
+
+        if genre:
+            item_genres = item.get("extra_info", {}).get("genres", [])
+            if genre.lower() not in [g.lower() for g in item_genres]:
+                continue
 
         results.append({
             "type": item["type"],
             "uri": item["uri"],
             "slug": item["slug"],
             "name": item["name"],
-            "score": _score(item["name"], query),
+            "score": _score(item["name"], query) if q_lower else 0.5,
+            "popularity": item.get("extra_info", {}).get("popularity") or 0,
             "extra_info": item["extra_info"],
         })
 
     results.sort(key=lambda x: (
         -x["score"],
         -(x["extra_info"].get("popularity") or 0),
-        x["name"],
+        x["uri"]
     ))
-    return results[:limit]
+    total_count = len(results)
+
+    return {"results": results[offset : offset + limit], "total_count": total_count}
 
 def _score(name: str, query: str) -> float:
     n, q = name.lower(), query.lower()
