@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import toast from 'react-hot-toast'
 
-import { getArtists, getGenreLandscape } from '../api'
+import { getArtists, getGenreLandscape, getSimilarityEdges } from '../api'
 import { hashColor, formatNumber } from '../utils/helpers'
 
 // Dynamic import for react-force-graph-2d (heavy lib)
@@ -22,69 +22,126 @@ export default function GraphExplorerPage() {
   const [searchQ,     setSearchQ]     = useState('')
   const [selectedNode, setSelected]   = useState(null)
 
+  const [simEdges, setSimEdges ] = useState([])
+
   const graphRef = useRef()
 
+  const fetchingRef = useRef(null)
+
   useEffect(() => {
-    Promise.all([
-      getArtists({ limit: loadedCount }),
-      getGenreLandscape(),
-    ])
-      .then(([artRes, genRes]) => {
-        setArtists(artRes.data?.results || [])
-        setGenres(genRes.data?.genres   || [])
+    if (fetchingRef.current === artists.length) return
+
+    fetchingRef.current = artists.length
+
+    if (artists.length === 0) setLoading(true)
+
+    const artistPromise = getArtists({
+      limit: 500,
+      offset: artists.length
+    })
+
+    const otherPromises = artists.length === 0
+      ? [getGenreLandscape(), getSimilarityEdges()]
+      : [Promise.resolve(null), Promise.resolve(null)]
+
+    Promise.all([artistPromise, ...otherPromises])
+      .then(([artRes, genRes, simRes]) => {
+        const newArtists = artRes.data?.results || []
+
+        if (newArtists.length === 0) {
+          fetchingRef.current = null
+        }
+
+        setArtists(prev => [...prev, ...newArtists])
+
+        if (genRes) setGenres(genRes.data?.genres || [])
+        if (simRes) setSimEdges(simRes.data?.results || [])
       })
-      .catch(() => toast.error('Failed to load graph data'))
+      .catch((err) => {
+        console.error("API ERROR:", err)
+        fetchingRef.current = null
+        toast.error('Failed to load more data')
+      })
       .finally(() => setLoading(false))
+
   }, [loadedCount])
+
 
   const graphData = useMemo(() => {
     const nodes = []
     const links = []
     const nodeSet = new Set()
 
-    // Genre nodes
     if (showGenres) {
       genres.forEach(g => {
-        const id = `genre:${g.genre}`
+        const cleanGenre = g.genre.toLowerCase().trim().replace(/\s+/g, '_')
+        const id = `genre:${cleanGenre}`
         nodes.push({
-          id, label: g.genre, type: 'genre',
-          val: Math.sqrt(g.track_count || 1) * 2,
+          id,
+          label: g.genre.toUpperCase(),
+          type: 'genre',
+          val: g.track_count ? Math.max(15, Math.sqrt(g.track_count) * 2) : 15,
           color: hashColor(g.genre),
-          data: g,
+          data: g
         })
         nodeSet.add(id)
       })
     }
 
-    // Artist nodes + edges
     if (showArtists) {
-      artists.forEach(a => {
+      artists.forEach((a) => {
         const connections = (a.genres?.length || 0)
         if (connections < minConn) return
 
-        const id = `artist:${a.slug}`
+        const cleanSlug = a.slug.toLowerCase().trim()
+        const id = `artist:${cleanSlug}`
+
         nodes.push({
-          id, label: a.name, type: 'artist',
-          val: 3,
+          id,
+          label: a.name,
+          type: 'artist',
+          val: 4,
           color: a.genres?.[0] ? hashColor(a.genres[0]) : '#535353',
-          data: a,
+          data: a
         })
         nodeSet.add(id)
 
-        // Artist → Genre edges
-        if (showGenres) {
-          a.genres?.forEach(g => {
-            const gid = `genre:${g}`
+        if (showGenres && a.genres) {
+          a.genres.forEach(gName => {
+            const cleanG = gName.toLowerCase().trim().replace(/\s+/g, '_')
+            const gid = `genre:${cleanG}`
             if (nodeSet.has(gid)) {
-              links.push({ source: id, target: gid, color: hashColor(g) + '66', width: 1 })
+              links.push({
+                source: id,
+                target: gid,
+                color: hashColor(gName) + '33',
+                width: 1
+              })
             }
           })
         }
       })
     }
 
+    if (showSimilar && showArtists) {
+      simEdges.forEach(edge => {
+        const sId = `artist:${edge.source.toLowerCase().trim()}`
+        const tId = `artist:${edge.target.toLowerCase().trim()}`
+
+        if (nodeSet.has(sId) && nodeSet.has(tId)) {
+          links.push({
+            source: sId,
+            target: tId,
+            color: '#1db95422',
+            width: 1.5
+          })
+        }
+      })
+    }
+
     return { nodes, links }
-  }, [artists, genres, showArtists, showGenres, showSimilar, minConn])
+
+  }, [artists, genres, simEdges, showArtists, showGenres, showSimilar, minConn])
 
   const handleNodeClick = useCallback((node) => {
     setSelected(node)
@@ -183,8 +240,9 @@ export default function GraphExplorerPage() {
         </button>
 
         <button onClick={() => setLoaded(l => l + 500)}
+          disabled={loading}
           className="w-full py-1.5 text-xs bg-accent/10 border border-accent/30 rounded hover:bg-accent/20 text-accent transition-all">
-          Load More (+500)
+          {loading ? 'Fetching...' : 'Load More (+500)'}
         </button>
 
         <p className="text-xs text-text-muted">{graphData.nodes.length} nodes · {graphData.links.length} edges</p>

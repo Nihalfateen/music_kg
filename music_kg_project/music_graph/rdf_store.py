@@ -380,6 +380,7 @@ class _RDFStore:
                     record[str(var)] = val.toPython()
                 else:
                     record[str(var)] = str(val)
+                    record[str(var)] = str(val)
             rows.append(record)
         return rows
 

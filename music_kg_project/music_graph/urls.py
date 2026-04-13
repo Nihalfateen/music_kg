@@ -40,6 +40,7 @@ urlpatterns = [
     path('genre-landscape/', views.GenreLandscapeView.as_view(), name='genre-landscape'),
     path('audio-distribution/', views.AudioDistributionView.as_view(), name='audio-distribution'),
 
+    path('similar-edges/', views.SimilarityEdgesView.as_view(), name='similar-edges'),
     # Recommendations
     re_path(r'^recommendations/(?P<slug>.+)/$', views.RecommendationsView.as_view(), name='recommendations'),
 

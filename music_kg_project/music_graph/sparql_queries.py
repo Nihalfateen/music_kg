@@ -57,42 +57,57 @@ def _album_uri_from_slug(slug: str) -> str:
 # 1. get_artists
 # ─────────────────────────────────────────────────────────────────────────────
 
-def get_artists(search=None, genre=None, limit=20, offset=0) -> List[Dict]:
-    """
-    Queries GraphDB for artists, supporting genre and name filters.
-    """
-    filters = []
-    if search:
-        filters.append(f'FILTER(CONTAINS(LCASE(?name), "{search.lower()}"))')
 
-    genre_pattern = ""
-    if genre:
-        genre_uri = f"<http://musickg.org/genre/{genre.lower().strip()}>"
-        genre_pattern = f"?uri music:inGenre {genre_uri} ."
+def get_artists(search=None, genre=None, limit=500, offset=0) -> List[Dict]:
+    """
+     Queries GraphDB for artists, supporting genre and name filters.
+     """
+    limit_val = int(limit) if limit else 500
 
     query = _PREFIXES + f"""
-    SELECT DISTINCT ?uri ?name ?slug WHERE {{
-        ?uri a music:Artist ;
-             music:artistName ?name ;
-             music:slug ?slug .
-        {genre_pattern}
-        {chr(10).join(filters)}
+    SELECT ?uri 
+           (SAMPLE(?nameVal) AS ?name) 
+           (SAMPLE(?slugVal) AS ?slug) 
+           (GROUP_CONCAT(DISTINCT ?gLabel; SEPARATOR=",") AS ?genreList)
+    WHERE {{
+        ?uri a music:Artist .
+
+        OPTIONAL {{ ?uri music:artistName ?n1 }}
+        OPTIONAL {{ ?uri rdfs:label ?n2 }}
+        BIND(COALESCE(?n1, ?n2, REPLACE(STR(?uri), "^.*[/#]", "")) AS ?nameVal)
+
+        OPTIONAL {{ ?uri music:slug ?s1 }}
+        BIND(COALESCE(?s1, REPLACE(STR(?uri), "^.*[/#]", "")) AS ?slugVal)
+
+        OPTIONAL {{
+            ?uri music:performs ?track .
+            ?track (music:inGenre|schema:genre) ?gen .
+            OPTIONAL {{ ?gen (rdfs:label|schema:name) ?lab }}
+            BIND(COALESCE(?lab, REPLACE(STR(?gen), "^.*[/#]", "")) AS ?gLabel)
+        }}
     }}
-    ORDER BY ?name
-    LIMIT {limit}
-    OFFSET {offset}
+    GROUP BY ?uri
+    LIMIT {limit_val}
     """
 
     rows = store.execute_sparql(query)
-    return [
-        {
-            "uri": str(r["uri"]),
-            "name": str(r["name"]),
-            "slug": str(r["slug"]),
-            "type": "artist"
-        }
-        for r in rows
-    ]
+    results = []
+    for r in rows:
+        uri_str = str(r["uri"])
+        name = str(r.get("name") or uri_str.split("/")[-1])
+        slug = str(r.get("slug") or uri_str.split("/")[-1])
+
+        genre_list = [g.strip().lower() for g in str(r.get("genreList", "")).split(",") if g.strip()]
+
+        results.append({
+            "uri": uri_str,
+            "name": name,
+            "slug": slug,
+            "type": "artist",
+            "genres": genre_list
+        })
+    return results
+
 
 def _get_dbpedia_for(uri: str) -> Optional[str]:
     """Return first owl:sameAs DBpedia URI for a given resource."""
@@ -708,9 +723,7 @@ def get_audio_distribution() -> dict:
         "energy":       ("?af music:energy ?val",       0.0,   1.0),
         "danceability": ("?af music:danceability ?val", 0.0,   1.0),
         "valence":      ("?af music:valence ?val",      0.0,   1.0),
-        # normalised
         "tempo":        ("?af music:tempo ?val",        0.0,   1.0),
-        # normalised
         "loudness":     ("?af music:loudness ?val",     0.0,   1.0),
     }
 
@@ -766,7 +779,31 @@ def _make_histogram(values, min_val, max_val, n_buckets):
     return labels, counts
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 8. Add and Update Information
+# 8. Similarity edges (graph page)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def get_similarity_edges(limit=2000) -> List[Dict]:
+    """
+    Finds artists who share a genre.
+    Generates slugs from URIs to ensure connections work even if music:slug is missing.
+    """
+    query = _PREFIXES + f"""
+    SELECT DISTINCT ?sSlug ?tSlug WHERE {{
+        ?s1 a music:Artist ; (music:inGenre|schema:genre) ?g .
+        ?s2 a music:Artist ; (music:inGenre|schema:genre) ?g .
+
+        BIND(REPLACE(STR(?s1), "^.*[/#]", "") AS ?sSlug)
+        BIND(REPLACE(STR(?s2), "^.*[/#]", "") AS ?tSlug)
+
+        FILTER(?sSlug < ?tSlug)
+    }} LIMIT {int(limit)}
+    """
+    rows = store.execute_sparql(query)
+
+    return [{"source": str(r["sSlug"]), "target": str(r["tSlug"])} for r in rows]
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 9. Add and Update Information
 # ─────────────────────────────────────────────────────────────────────────────
 
 def create_artist_node(name: str, genre: str):
@@ -803,20 +840,9 @@ def create_songs_bulk(artist_slug, songs_list):
         song_name = song['name'].strip()
         album_name = song.get('album', '').strip()
 
-        # Track URI
         track_safe_name = quote(song_name.lower().replace(' ', '_'))
         song_slug = f"{artist_slug}_{track_safe_name}"
         track_uri = f"http://musickg.org/track/{song_slug}"
-
-        # 1. Smart Album Check (The "Twin" Fix)
-        # We look for ANY album linked to this artist that matches the name
-        album_check_q = _PREFIXES + f"""
-            SELECT ?alb WHERE {{ 
-                <{artist_uri}> music:hasAlbum ?alb . 
-                ?alb music:albumName ?name .
-                FILTER(LCASE(STR(?name)) = "{album_name.lower()}")
-            }} LIMIT 1
-        """
 
         if album_name:
             album_safe_name = quote(album_name.lower().replace(' ', '_'))
@@ -833,7 +859,7 @@ def create_songs_bulk(artist_slug, songs_list):
 
             if existing_alb:
                 album_uri = str(existing_alb[0]['alb'])
-                final_album_slug = album_slug  # Or fetch from graph if different
+                final_album_slug = album_slug
             else:
                 album_uri = f"http://musickg.org/album/{album_slug}"
                 final_album_slug = album_slug
@@ -924,7 +950,6 @@ def update_track_album(track_uri: str, artist_uri: str, new_album_name: str) -> 
                 ?alb ?p ?o .
                 OPTIONAL { ?artist music:hasAlbum ?alb . }
 
-                # The condition for total disappearance:
                 FILTER NOT EXISTS { ?alb music:hasTrack ?anyTrack . }
             }
             """
@@ -989,7 +1014,7 @@ def delete_track_from_graph(track_uri: str) -> bool:
     return success
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 9. execute_raw_sparql
+# 10. execute_raw_sparql
 # ─────────────────────────────────────────────────────────────────────────────
 
 _FORBIDDEN = re.compile(

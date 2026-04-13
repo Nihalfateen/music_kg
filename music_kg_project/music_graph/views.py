@@ -66,30 +66,31 @@ class StandardPagination(PageNumberPagination):
 # GET /api/artists/
 # ─────────────────────────────────────────────────────────────────────────────
 
-@method_decorator(cache_page(CACHE_TTL), name='dispatch')
 class ArtistListView(APIView):
-    """Paginated artist list with optional ?search= and ?genre= filters."""
-
     def get(self, request):
         t0 = time.time()
-        search = request.query_params.get("search", "").strip()
-        genre = request.query_params.get("genre",  "").strip()
+
+        limit_param = request.query_params.get("limit") or request.query_params.get("page_size")
+        limit = int(limit_param) if limit_param else 500
+
         page = int(request.query_params.get("page", 1))
-        page_size = int(request.query_params.get("page_size", 20))
-        offset = (page - 1) * page_size
+        offset = (page - 1) * limit
+
+        search = request.query_params.get("search", "").strip()
+        genre = request.query_params.get("genre", "").strip()
 
         artists = sq.get_artists(
             search=search or None,
             genre=genre or None,
-            limit=page_size,
+            limit=limit,
             offset=offset,
         )
-        return _timed_response({
-            "page":    page,
-            "results": artists,
-            "count":   len(artists),
-        }, t0)
 
+        return _timed_response({
+            "page": page,
+            "results": artists,
+            "count": len(artists),
+        }, t0)
 
 # ─────────────────────────────────────────────────────────────────────────────
 # GET /api/artists/<slug>/
@@ -189,7 +190,6 @@ class SearchView(APIView):
         results = search_data["results"]
         total_count = search_data["total_count"]
 
-        # Log the search
         entity_types = {}
         for r in results:
             entity_types[r["type"]] = entity_types.get(r["type"], 0) + 1
@@ -205,7 +205,6 @@ class SearchView(APIView):
 
         return _timed_response({
             "query":   q,
-            # "genre": genre,
             "results": results,
             "total_count": total_count,
             "count":   len(results),
@@ -395,6 +394,13 @@ class StatsView(APIView):
         stats = store.get_stats()
         stats["similarity_engine"] = engine_stats()
         return _timed_response(stats, t0)
+
+
+class SimilarityEdgesView(APIView):
+    def get(self, request):
+        t0 = time.time()
+        edges = sq.get_similarity_edges(limit=2000)
+        return _timed_response(edges, t0)
 
 # ─────────────────────────────────────────────────────────────────────────────
 # POST /api/artists/create/
