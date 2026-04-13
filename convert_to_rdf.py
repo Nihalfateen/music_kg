@@ -85,7 +85,6 @@ def audio_uri(track_id: str) -> URIRef:
 def load_and_clean(csv_path: str) -> pd.DataFrame:
     log.info("Loading CSV …")
 
-    # Try UTF-8 first, fall back to latin-1 (handles special chars in artist names)
     try:
         df = pd.read_csv(csv_path, low_memory=False, encoding="utf-8")
     except UnicodeDecodeError:
@@ -95,7 +94,7 @@ def load_and_clean(csv_path: str) -> pd.DataFrame:
     log.info(f"  Rows loaded  : {len(df):,}")
     log.info(f"  Columns      : {df.columns.tolist()}")
 
-    # ── Column normalisation for spotify_songs.csv ────────────────────────────
+    # Column normalization for spotify_songs.csv
     # Map actual column names → standard names used throughout the script
     rename_map = {
         "track_artist":              "artist_name",
@@ -114,15 +113,15 @@ def load_and_clean(csv_path: str) -> pd.DataFrame:
         ).dt.year
         df = df.drop(columns=["_release_date"])
 
-    # ── Deduplicate ───────────────────────────────────────────────────────────
+    # Deduplicate
     df = df.drop_duplicates(subset="track_id")
     log.info(f"  After dedup  : {len(df):,}")
 
-    # ── Drop critical nulls ───────────────────────────────────────────────────
+    # Drop critical nulls
     df = df.dropna(subset=["artist_name", "track_name"])
     log.info(f"  After null drop : {len(df):,}")
 
-    # ── Normalise text columns ────────────────────────────────────────────────
+    # Normalize text columns
     for col in ["track_name", "artist_name", "album_name", "genre"]:
         if col in df.columns:
             df[col] = (
@@ -139,12 +138,12 @@ def load_and_clean(csv_path: str) -> pd.DataFrame:
     if "genre" in df.columns:
         df["genre"] = df["genre"].replace("nan", "Unknown").fillna("Unknown")
 
-    # ── Year filter ───────────────────────────────────────────────────────────
+    # Year filter
     df["year"] = pd.to_numeric(df["year"], errors="coerce")
     df = df[(df["year"] >= 1900) & (df["year"] <= 2024)]
     log.info(f"  After year filter : {len(df):,}")
 
-    # ── Normalise audio features to [0, 1] ────────────────────────────────────
+    # Normalise audio features to [0, 1]
     # tempo: 0–250 BPM
     if "tempo" in df.columns:
         df["tempo"] = pd.to_numeric(df["tempo"], errors="coerce").fillna(0)
@@ -207,7 +206,7 @@ def build_ontology(g_ont: Graph) -> None:
     g_ont.add((ont_uri, RDF.type, OWL.Ontology))
     g_ont.add((ont_uri, RDFS.label, Literal("Music Knowledge Graph Ontology")))
 
-    # ── Classes ──────────────────────────────
+    # Classes
     add_class(MUSIC.Artist,
               "Artist",
               "A music artist or group",
@@ -233,7 +232,7 @@ def build_ontology(g_ont: Graph) -> None:
               "AudioFeatures",
               "Audio analysis features extracted from a track")
 
-    # ── Object Properties ─────────────────────
+    # Object Properties
     add_obj_prop(MUSIC.hasAlbum,    "hasAlbum",    MUSIC.Artist, MUSIC.Album)
     add_obj_prop(MUSIC.hasTrack,    "hasTrack",    MUSIC.Album,  MUSIC.Track)
     add_obj_prop(MUSIC.inGenre,     "inGenre",     MUSIC.Track,  MUSIC.Genre)
@@ -252,7 +251,7 @@ def build_ontology(g_ont: Graph) -> None:
     g_ont.add((MUSIC.sharedGenreWith, RDFS.range,  MUSIC.Track))
     g_ont.add((MUSIC.sharedGenreWith, RDF.type, OWL.SymmetricProperty))
 
-    # ── Datatype Properties ───────────────────
+    # Datatype Properties
     add_data_prop(MUSIC.trackName,   "trackName",   MUSIC.Track,          XSD.string)
     add_data_prop(MUSIC.artistName,  "artistName",  MUSIC.Artist,         XSD.string)
     add_data_prop(MUSIC.albumName,   "albumName",   MUSIC.Album,          XSD.string)
@@ -307,7 +306,7 @@ def populate_graphs(
         g_uri  = genre_uri(genre_name)
         af_uri = audio_uri(track_id)
 
-        # ── Artist graph ──
+        # Artist graph
         if artist_name not in seen_artists:
             seen_artists.add(artist_name)
             g_artists.add((a_uri, RDF.type,         MUSIC.Artist))
@@ -317,7 +316,7 @@ def populate_graphs(
             g_artists.add((a_uri, OWL.sameAs, dbp))
             dbpedia_links += 1
 
-        # ── Genre ──
+        # Genre
         if genre_name not in seen_genres:
             seen_genres.add(genre_name)
             g_artists.add((g_uri, RDF.type, MUSIC.Genre))
@@ -326,7 +325,7 @@ def populate_graphs(
             g_artists.add((g_uri, OWL.sameAs, dbp_genre))
             dbpedia_links += 1
 
-        # ── Album graph ──
+        # Album graph
         album_key = (artist_name, album_name)
         if album_key not in seen_albums:
             seen_albums.add(album_key)
@@ -335,7 +334,7 @@ def populate_graphs(
             g_albums.add((al_uri, MUSIC.releaseYear, Literal(year, datatype=XSD.integer)))
             g_albums.add((a_uri,  MUSIC.hasAlbum,    al_uri))
 
-        # ── Track graph ──
+        # Track graph
         g_tracks.add((t_uri, RDF.type,         MUSIC.Track))
         g_tracks.add((t_uri, MUSIC.trackName,  Literal(track_name, datatype=XSD.string)))
         g_tracks.add((t_uri, MUSIC.performedBy, a_uri))
@@ -347,7 +346,7 @@ def populate_graphs(
         g_tracks.add((t_uri, MUSIC.popularity, Literal(int(pop), datatype=XSD.integer)))
         g_tracks.add((t_uri, MUSIC.durationMs, Literal(int(dur), datatype=XSD.integer)))
 
-        # ── AudioFeatures ──
+        # AudioFeatures
         g_tracks.add((t_uri,  MUSIC.hasAudioFeatures, af_uri))
         g_tracks.add((af_uri, RDF.type, MUSIC.AudioFeatures))
 
@@ -449,7 +448,7 @@ def compute_similarity(df: pd.DataFrame, g_artists: Graph) -> int:
     names  = artist_vecs.index.tolist()
     matrix = artist_vecs.values.astype(float)
 
-    # Normalise rows to unit vectors (safe for cosine)
+    # Normalize rows to unit vectors (safe for cosine)
     norms = np.linalg.norm(matrix, axis=1, keepdims=True)
     norms[norms == 0] = 1
     matrix_norm = matrix / norms
@@ -512,7 +511,7 @@ def main(csv_path: str = "spotify_songs.csv", data_dir: str = "data") -> None:
     # ── Step 1 ──────────────────────────────
     df = load_and_clean(csv_path)
 
-    # ── Build ConjunctiveGraph ────────────────
+    # Build ConjunctiveGraph
     cg = ConjunctiveGraph()
     cg.bind("music",  MUSIC)
     cg.bind("schema", SCHEMA)
@@ -526,14 +525,12 @@ def main(csv_path: str = "spotify_songs.csv", data_dir: str = "data") -> None:
     g_albums  = cg.get_context(G_ALBUMS)
     g_tracks  = cg.get_context(G_TRACKS)
 
-    # ── Step 2 — Ontology ────────────────────
+    # Step 2 — Ontology
     log.info("Building OWL ontology …")
     build_ontology(g_ont)
 
     # ── Steps 3 & 4 — Populate + Linked Data ─
-    dbpedia_links, n_artists, n_albums, n_genres = populate_graphs(
-        df, g_artists, g_albums, g_tracks
-    )
+    dbpedia_links, n_artists, n_albums, n_genres = populate_graphs(df, g_artists, g_albums, g_tracks)
 
     # ── Step 6 — Similarity ──────────────────
     sim_links = compute_similarity(df, g_artists)
@@ -542,7 +539,7 @@ def main(csv_path: str = "spotify_songs.csv", data_dir: str = "data") -> None:
     # (after similarity so Rule 2 also closes those links)
     inf_added = apply_inference(g_artists, g_albums, g_tracks)
 
-    # ── Collect stats ────────────────────────
+    # Collect stats
     stats = {
         "total_triples": len(cg),
         "unique_artists": n_artists,

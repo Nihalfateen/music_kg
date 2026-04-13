@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import toast from 'react-hot-toast'
+
 import { getAlbumDetail, updateAlbumYear } from '../api'
 import AudioFeatureBar from '../components/common/AudioFeatureBar'
 import { PageSkeleton } from '../components/common/LoadingSkeleton'
@@ -29,7 +30,6 @@ export default function AlbumDetailPage() {
         albumUri: album.uri,
         newYear: parseInt(tempYear)
       });
-      // Update local state so UI refreshes immediately
       setAlbum({ ...album, year: tempYear });
       setIsEditingYear(false);
       toast.success('Release year updated');
@@ -88,7 +88,7 @@ export default function AlbumDetailPage() {
           </div>
         </div>
 
-        {/* Tracks List (Remaining code stays the same) */}
+        {/* Tracks List */}
         <div className="bg-bg-card border border-border-col rounded-card overflow-hidden">
           <div className="px-5 py-3 border-b border-border-col">
             <h2 className="text-xs font-bold text-text-muted uppercase tracking-wider">Tracks</h2>

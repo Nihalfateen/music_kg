@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
+import toast from 'react-hot-toast'
+
 import { useApp } from '../context/AppContext'
 import { useCountUp } from '../hooks/useCountUp'
 import { formatNumber, hashColor } from '../utils/helpers'
 import { getGenreLandscape } from '../api'
-import toast from 'react-hot-toast'
 
 const DECADES = ['1960s','1970s','1980s','1990s','2000s','2010s','2020s']
 

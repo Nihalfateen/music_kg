@@ -383,6 +383,15 @@ class StatsView(APIView):
         stats["similarity_engine"] = engine_stats()
         return _timed_response(stats, t0)
 
+# ─────────────────────────────────────────────────────────────────────────────
+# POST /api/artists/create/
+# POST /api/songs/bulk-create/
+# POST /api/tracks/udate-album/
+# POST /api/albums/update-year/
+# POST /api/tracks/delete/
+# ─────────────────────────────────────────────────────────────────────────────
+
+# update this to the correct methods after cleanup
 
 @csrf_exempt
 def api_create_artist(request):
@@ -391,7 +400,6 @@ def api_create_artist(request):
         name = data.get('name')
         genre = data.get('genre')
 
-        # success is False if the artist already exists OR if GraphDB fails
         success, slug = create_artist_node(name, genre)
 
         if success:
@@ -409,7 +417,7 @@ def api_create_songs_bulk(request):
     if request.method == 'POST':
         data = json.loads(request.body)
         artist_slug = data.get('artist_slug')
-        songs = data.get('songs', []) # Expected: [{'name': 's1', 'album': 'a1'}, ...]
+        songs = data.get('songs', [])
 
         success, count = create_songs_bulk(artist_slug, songs)
         return JsonResponse({"status": "ok", "created": count}, status=201)
@@ -455,23 +463,8 @@ def update_album_year(request):
         print(f"Update Album Year Error: {str(e)}")
         return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
 
-# @csrf_exempt
-# def add_track_view(request):
-#     try:
-#         data = json.loads(request.body)
-#         success = sq.create_track_for_artist(
-#             data['artistUri'],
-#             data['trackName'],
-#             data.get('albumName')
-#         )
-#         if success:
-#             return JsonResponse({'status': 'success'})
-#         return JsonResponse({'status': 'error', 'message': 'SPARQL update failed'}, status=500)
-#     except Exception as e:
-#         print(f"ADD TRACK ERROR: {e}")  # This will show the error in your terminal
-#         return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
 
-@csrf_exempt  # Only if you haven't set up CSRF tokens for your React frontend yet
+@csrf_exempt
 def delete_track_view(request):
     if request.method == 'POST':
         try:
@@ -481,7 +474,6 @@ def delete_track_view(request):
             if not track_uri:
                 return JsonResponse({'error': 'No track URI provided'}, status=400)
 
-            # Call the query function we wrote in the previous step
             success = sq.delete_track_from_graph(track_uri)
 
             if success:

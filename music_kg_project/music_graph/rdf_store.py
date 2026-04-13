@@ -15,7 +15,7 @@ from typing import Optional, Dict, Any, List
 from rdflib import Namespace
 from rdflib.namespace import RDF, RDFS, OWL, XSD
 
-# ── Namespaces (kept at module level for backward compatibility) ──────────────
+# Namespaces (kept at module level for backward compatibility)
 BASE = Namespace("http://musickg.org/")
 MUSIC = Namespace("http://musickg.org/ontology#")
 SCHEMA = Namespace("http://schema.org/")
@@ -64,7 +64,6 @@ class _RDFStore:
             log.warning("RDFStore.load() called twice — skipping.")
             return
 
-        # Load stats.json first (works regardless of backend)
         if stats_path.exists():
             with open(stats_path, encoding="utf-8") as f:
                 self._stats = json.load(f)
@@ -116,9 +115,6 @@ class _RDFStore:
 
             if count < 500 and nt_path.exists():
                 log.info(f"GraphDB only has {count} triples (Ontology only). Starting full data upload...")
-
-                # Optional: Clear the repo first to ensure a clean slate
-                # requests.delete(self._update_url)
 
                 if self._upload_nt(nt_path):
                     count = self._graphdb_triple_count()
@@ -235,7 +231,7 @@ class _RDFStore:
                     else:
                         raw = node["value"]
                         typ = node.get("datatype", "")
-                        # Cast numerics
+
                         if "integer" in typ or "int" in typ:
                             try:
                                 raw = int(raw)

@@ -19,7 +19,6 @@ export default function AddSongsModal({ artist, onClose, onSuccess }) {
     e.preventDefault()
     console.log("Submit triggered!", rows)
 
-    // Validation: Ensure all rows have both name and album
     const validSongs = rows.filter(r => r.name.trim() !== '' && r.album.trim() !== '');
 
     if (validSongs.length < rows.length) {
@@ -29,7 +28,6 @@ export default function AddSongsModal({ artist, onClose, onSuccess }) {
 
     setLoading(true)
     try {
-      // ✅ Use the imported function createSongsBulk instead of api.post
       await createSongsBulk({
         artist_slug: artist.slug,
         songs: validSongs
@@ -55,10 +53,8 @@ export default function AddSongsModal({ artist, onClose, onSuccess }) {
           <button onClick={onClose} className="text-2xl text-text-muted hover:text-text-primary">×</button>
         </div>
 
-        {/* --- FORM STARTS HERE --- */}
         <form onSubmit={handleSubmit} className="flex flex-col flex-1 overflow-hidden">
 
-          {/* Scrollable Input Area */}
           <div className="flex-1 overflow-y-auto p-6 space-y-4">
             {rows.map((row, i) => (
               <div key={i} className="flex gap-3 items-end group">
@@ -80,7 +76,6 @@ export default function AddSongsModal({ artist, onClose, onSuccess }) {
             </button>
           </div>
 
-          {/* Footer Area (Now INSIDE the form) */}
           <div className="p-6 border-t border-border-col flex gap-3 bg-bg-card">
             <button type="button" onClick={onClose} className="flex-1 font-bold text-text-muted hover:text-text-primary">
                 Cancel
@@ -93,10 +88,7 @@ export default function AddSongsModal({ artist, onClose, onSuccess }) {
               {loading ? "Writing Triples..." : `Publish ${rows.filter(r => r.name).length} Songs`}
             </button>
           </div>
-
         </form>
-        {/* --- FORM ENDS HERE --- */}
-
       </motion.div>
     </div>
   )

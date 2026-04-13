@@ -6,6 +6,7 @@ import {
   ResponsiveContainer
 } from 'recharts'
 import toast from 'react-hot-toast'
+
 import { getArtistDetail, getRecommendations, updateTrackMetadata, deleteTrack} from '../api'
 import AudioFeatureBar from '../components/common/AudioFeatureBar'
 import { PageSkeleton } from '../components/common/LoadingSkeleton'
@@ -13,7 +14,7 @@ import { hashColor, formatMs } from '../utils/helpers'
 
 import AddSongsModal from "../components/modals/AddSongsModal.jsx";
 
-// ── Sortable tracks table ─────────────────────────────────────────────────────
+// Sortable tracks table
 function SortableTable({ tracks, onEdit, onDelete }) {
   const [sortKey, setSortKey] = useState('popularity')
   const [asc, setAsc] = useState(false)
@@ -45,7 +46,6 @@ function SortableTable({ tracks, onEdit, onDelete }) {
           <tr className="border-b border-border-col">
             <th className="text-left text-xs text-text-muted uppercase tracking-wider pb-2 w-8">#</th>
             <th className="text-left text-xs text-text-muted uppercase tracking-wider pb-2">Track</th>
-            {/*<th className="text-left text-xs text-text-muted uppercase tracking-wider pb-2">Album</th>*/}
             <Th k="album_name" label="Album"/>
             <Th k="popularity"   label="Pop" />
             <Th k="energy"       label="Energy" />
@@ -62,7 +62,6 @@ function SortableTable({ tracks, onEdit, onDelete }) {
                 <td className="py-2.5 text-sm text-text-muted">{i + 1}</td>
                 <td className="py-2.5 text-sm font-medium text-text-primary max-w-xs truncate pr-4">{t.name}</td>
 
-                {/* NEW */}
                 <td className="py-2.5 text-xs text-text-secondary truncate max-w-[150px]">
                   <span className={t.album_name === 'Single' ? 'italic opacity-50' : ''}>
                     {t.album_name}
@@ -82,7 +81,6 @@ function SortableTable({ tracks, onEdit, onDelete }) {
                 <td className="py-2.5 text-xs text-text-secondary font-mono">{af.valence?.toFixed(2) ?? '—'}</td>
                 <td className="py-2.5 text-xs text-text-muted">{formatMs(t.duration_ms)}</td>
 
-                {/* NEW */}
                 <td className="py-2.5 text-right">
                   <button
                     onClick={() => onEdit(t)}
@@ -91,9 +89,7 @@ function SortableTable({ tracks, onEdit, onDelete }) {
                   <button
                     onClick={() => onDelete(t)}
                     className="p-1.5 hover:bg-red-500/20 rounded text-red-500 text-xs font-bold"
-                  >
-                    Delete
-                  </button>
+                  >❌ Delete </button>
                 </td>
               </tr>
             )
@@ -104,9 +100,7 @@ function SortableTable({ tracks, onEdit, onDelete }) {
   )
 }
 
-// ── Album row — expands inline to show tracks ─────────────────────────────────
-// Option A: inline tracks expanded inside the card
-// Option B: singles grouped separately
+// Album row — expands inline to show tracks
 function AlbumCard({ album }) {
   const [open, setOpen] = useState(false)
 
@@ -183,79 +177,16 @@ function AlbumCard({ album }) {
   )
 }
 
-// ── Singles section (Option B) ────────────────────────────────────────────────
-function SinglesSection({ tracks }) {
-  const [expanded, setExpanded] = useState(false)
-  const visible = expanded ? tracks : tracks.slice(0, 6)
-
-  return (
-    <div className="bg-bg-card border border-border-col rounded-card overflow-hidden">
-      <div className="px-4 py-3 border-b border-border-col flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <span className="text-lg">🎵</span>
-          <div>
-            <p className="text-sm font-semibold text-text-primary">Singles & EPs</p>
-            <p className="text-xs text-text-muted">{tracks.length} releases</p>
-          </div>
-        </div>
-      </div>
-      <div className="divide-y divide-border-col/30">
-        {visible.map((t, i) => {
-          const af = t.audio_features || {}
-          return (
-            <div key={t.uri || i}
-              className="flex items-center gap-3 px-4 py-2.5 hover:bg-bg-hover transition-colors">
-              <span className="text-xs text-text-muted w-5 shrink-0">{i + 1}</span>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm text-text-primary truncate">{t.name}</p>
-                {t.year && <p className="text-xs text-text-muted">{t.year}</p>}
-              </div>
-              <div className="flex items-center gap-3 shrink-0">
-                {af.energy != null && (
-                  <span className="text-xs text-text-muted hidden sm:block">
-                    E:{af.energy?.toFixed(2)}
-                  </span>
-                )}
-                <div className="flex items-center gap-1">
-                  <div className="w-10 h-1 bg-bg-primary rounded-full overflow-hidden">
-                    <div className="h-full bg-accent rounded-full"
-                      style={{ width: `${t.popularity || 0}%` }} />
-                  </div>
-                  <span className="text-xs text-text-muted w-5">{t.popularity}</span>
-                </div>
-                <span className="text-xs text-text-muted w-10 text-right">
-                  {formatMs(t.duration_ms)}
-                </span>
-              </div>
-            </div>
-          )
-        })}
-      </div>
-      {tracks.length > 6 && (
-        <button
-          onClick={() => setExpanded(e => !e)}
-          className="w-full py-2.5 text-xs text-accent hover:text-accent-hover transition-colors border-t border-border-col hover:bg-bg-hover"
-        >
-          {expanded ? 'Show less ▲' : `Show all ${tracks.length} singles ▼`}
-        </button>
-      )}
-    </div>
-  )
-}
-
-// ── Main page ─────────────────────────────────────────────────────────────────
+// Main page
 export default function ArtistDetailPage() {
   const { slug } = useParams()
   const [artist, setArtist]   = useState(null)
   const [recs, setRecs]       = useState(null)
   const [loading, setLoading] = useState(true)
 
-  {/* NEW */}
   const [showAddSongs, setShowAddSongs] = useState(false)
   const [editingTrack, setEditingTrack] = useState(null)
   const [newAlbumName, setNewAlbumName] = useState("")
-  const [showAddForm, setShowAddForm] = useState(false)
-  const [newTrack, setNewTrack] = useState({ name: '', album: ''})
 
   useEffect(() => {
     setLoading(true)
@@ -271,7 +202,6 @@ export default function ArtistDetailPage() {
       .finally(() => setLoading(false))
   }, [slug])
 
-  {/* NEW */}
   const handleUpdateAlbum = async () => {
     if (!newAlbumName.trim()) return toast.error("Please enter an album name")
 
@@ -283,49 +213,27 @@ export default function ArtistDetailPage() {
       });
 
       const res = await getArtistDetail(slug);
-
       setArtist(res.data);
 
       setEditingTrack(null);
       toast.success('Sync complete!');
 
-      // const updatedData = await getArtistDetail(slug);
-      // setArtist(updatedData.data);
-      //
-      // toast.success('Graph updated! Album consolidated.');
-      // setEditingTrack(null);
     } catch (err) {
       toast.error('Failed to update the Knowledge Graph');
       console.error(err);
     }
   }
 
-  // const handleAddTrack = async () => {
-  //   try {
-  //     await addTrack({
-  //       artistUri: artist.uri,
-  //       trackName: newTrack.name,
-  //       albumName: newTrack.album
-  //     });
-  //     toast.success("Track added!");
-  //     window.location.reload(); // Refresh to show the new data
-  //   } catch (err) {
-  //     toast.error("Failed to add track");
-  //   }
-  // }
-
   const handleDeleteTrack = async (track) => {
-    // 1. The Confirmation Pop-up
+    // confirmation Pop-up
     const confirmed = window.confirm(`Are you sure you want to delete "${track.name}"? This will permanently remove it from the Knowledge Graph.`);
 
     if (!confirmed) return;
 
     const tid = toast.loading("Deleting track...");
     try {
-      // 2. Call your API (Ensure you've added deleteTrack to your api.js)
       await deleteTrack( {trackUri: track.uri });
 
-      // 3. Refresh Data
       const res = await getArtistDetail(slug);
       setArtist(res.data);
 
@@ -361,54 +269,7 @@ export default function ArtistDetailPage() {
   const allAlbums  = artist.albums || []
   const allTracks = artist.top_tracks || []
 
-  // const albumsToDisplay = allAlbums
-  //   .filter(a => (a.track_count || 0) > 1)
-  //   .map(a => ({
-  //     ...a,
-  //     tracks: (artist.top_tracks || []).filter(t => true).slice(0, a.track_count)
-  //   }));
 
-  // const singles = allAlbums
-  //   .filter(a => (a.track_count || 0) <= 1)
-  //   .map(a => {
-  //     const match = (artist.top_tracks || []).find(t =>
-  //       t.name?.toLowerCase() === a.name?.toLowerCase()
-  //     );
-  //     return {
-  //       ...a,
-  //       popularity: match?.popularity || 0,
-  //       duration_ms: match?.duration_ms || 0,
-  //     };
-  //   });
-
-  // const singles = allAlbums.filter(a => (a.track_count || 0) <= 1)
-  //
-  // const topTracksBySlug = {}
-  // ;(artist.top_tracks || []).forEach(t => {
-  //   topTracksBySlug[t.slug] = t
-  // })
-
-  // Albums with 1 track = singles → flatten to track list
-  // const singles = allAlbums
-  //   .filter(a => (a.track_count || 0) <= 1)
-  //   .map(a => {
-  //     // Try to find matching track from top_tracks by album name
-  //     const match = (artist.top_tracks || []).find(t =>
-  //       t.name?.toLowerCase() === a.name?.toLowerCase()
-  //     )
-  //     return {
-  //       uri:        a.uri,
-  //       slug:       a.slug,
-  //       name:       a.name,
-  //       year:       a.year,
-  //       popularity: match?.popularity || 0,
-  //       duration_ms: match?.duration_ms || 0,
-  //       audio_features: match?.audio_features || {},
-  //     }
-  //   })
-  //   .sort((a, b) => (b.popularity || 0) - (a.popularity || 0))
-
-  {/* NEW */}
   const albumsWithTracks = allAlbums.map(album => ({
     ...album,
     tracks: allTracks.filter(t => t.album_uri === album.uri)
@@ -417,7 +278,7 @@ export default function ArtistDetailPage() {
   return (
     <div className="max-w-6xl mx-auto px-6 py-8">
 
-      {/* ── Header ──────────────────────────────────────────────────────────── */}
+      {/* Header */}
       <motion.div className="mb-10"
         initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
         <div className="relative rounded-card overflow-hidden p-8 mb-6"
@@ -453,7 +314,8 @@ export default function ArtistDetailPage() {
         </div>
       </motion.div>
 
-      {/* ── Audio Profile ────────────────────────────────────────────────────── */}
+
+      {/* Audio Profile */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-10">
         {af.energy != null && (
           <div className="bg-bg-card border border-border-col rounded-card p-5">
@@ -479,108 +341,8 @@ export default function ArtistDetailPage() {
         </div>
       </div>
 
-      {/*/!* ── Option A: Real Albums (2+ tracks) — expand inline ────────────────── *!/*/}
-      {/*{albumsToDisplay.length > 0 && (*/}
-      {/*  <section className="mb-10">*/}
-      {/*    <h2 className="text-sm font-bold text-text-primary uppercase tracking-wider mb-4">*/}
-      {/*      Albums*/}
-      {/*      <span className="ml-2 text-text-muted font-normal normal-case text-xs">*/}
-      {/*        — click to expand tracks*/}
-      {/*      </span>*/}
-      {/*    </h2>*/}
-      {/*    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">*/}
-      {/*      {albumsToDisplay.map(a =>*/}
-      {/*          <AlbumCard key={a.uri} album={a} />)}*/}
-      {/*    </div>*/}
-      {/*  </section>*/}
-      {/*)}*/}
 
-      {/*/!* ── Top Tracks table ─────────────────────────────────────────────────── *!/*/}
-      {/*{allTracks?.length > 0 && (*/}
-      {/*  <section className="mb-10">*/}
-      {/*    /!*<h2 className="text-sm font-bold text-text-primary uppercase tracking-wider mb-4">Top Tracks</h2>*!/*/}
-      {/*    /!*<div className="bg-bg-card border border-border-col rounded-card p-4">*!/*/}
-      {/*    /!*  <SortableTable tracks={artist.top_tracks} />*!/*/}
-      {/*    /!*</div>*!/*/}
-      {/*    /!* --- Song List Section --- *!/*/}
-      {/*    <section className="mb-12">*/}
-      {/*      <h2 className="text-2xl font-bold mb-6">Songs</h2>*/}
-      {/*      <SortableTable*/}
-      {/*        tracks={allTracks}*/}
-      {/*        onEdit={(t) => {*/}
-      {/*          setEditingTrack(t);*/}
-      {/*          setNewAlbumName(t.album_name || ""); // Pre-fill with current album*/}
-      {/*        }}*/}
-      {/*      />*/}
-      {/*    </section>*/}
-      {/*    /!* NEW BUTTON RIGHT BELOW *!/*/}
-      {/*    <div className="mt-8 flex justify-center">*/}
-      {/*      <button*/}
-      {/*        onClick={() => setShowAddSongs(true)}*/}
-      {/*        className="group relative px-8 py-4 bg-bg-card border border-border-col rounded-card hover:border-accent transition-all overflow-hidden"*/}
-      {/*      >*/}
-      {/*        <div className="relative z-10 flex items-center gap-3">*/}
-      {/*          <span className="text-2xl text-accent group-hover:scale-125 transition-transform">+</span>*/}
-      {/*          <span className="font-bold text-text-primary">Add songs to this artist</span>*/}
-      {/*        </div>*/}
-      {/*        <div className="absolute inset-0 bg-accent/5 opacity-0 group-hover:opacity-100 transition-opacity" />*/}
-      {/*      </button>*/}
-      {/*    </div>*/}
-
-      {/*    /!* Edit Modal *!/*/}
-      {/*    <AnimatePresence>*/}
-      {/*      {editingTrack && (*/}
-      {/*        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">*/}
-      {/*          <motion.div initial={{ scale: 0.9 }} animate={{ scale: 1 }} exit={{ scale: 0.9 }} className="bg-bg-card border border-border-col rounded-card p-6 w-full max-w-md shadow-2xl">*/}
-      {/*            <h3 className="text-lg font-bold mb-2 text-text-primary">Edit Metadata</h3>*/}
-      {/*            <p className="text-sm text-text-muted mb-4">Moving: <span className="text-accent">{editingTrack.name}</span></p>*/}
-      {/*            <p className="text-xs text-text-muted mb-4 px-3 py-2 bg-bg-primary rounded-pill border border-border-col/50">*/}
-      {/*              Current Album: <span className="text-text-primary font-mono ml-1">{editingTrack.album_name}</span>*/}
-      {/*            </p>*/}
-      {/*            <label className="block text-xs font-semibold text-text-muted uppercase mb-2">New Album Name</label>*/}
-      {/*            <input*/}
-      {/*              autoFocus*/}
-      {/*              value={newAlbumName}*/}
-      {/*              onChange={(e) => setNewAlbumName(e.target.value)}*/}
-      {/*              className="w-full bg-bg-primary border border-border-col rounded-pill px-4 py-2 outline-none focus:border-accent text-text-primary mb-6"*/}
-      {/*            />*/}
-      {/*            <div className="flex gap-3">*/}
-      {/*              <button onClick={handleUpdateAlbum} className="flex-1 bg-accent text-bg-primary font-bold py-2 rounded-pill">Save</button>*/}
-      {/*              <button onClick={() => setEditingTrack(null)} className="flex-1 bg-bg-hover text-text-primary py-2 rounded-pill">Cancel</button>*/}
-      {/*            </div>*/}
-      {/*          </motion.div>*/}
-      {/*        </div>*/}
-      {/*      )}*/}
-      {/*    </AnimatePresence>*/}
-
-      {/*    /!* --- Modal Rendering --- *!/*/}
-      {/*    {showAddSongs && (*/}
-      {/*      <AddSongsModal*/}
-      {/*        artist={artist}*/}
-      {/*        onClose={() => setShowAddSongs(false)}*/}
-      {/*        onSuccess={() => {*/}
-      {/*          setShowAddSongs(false);*/}
-      {/*          window.location.reload();*/}
-      {/*        }}*/}
-      {/*      />*/}
-      {/*    )}*/}
-      {/*  </section>*/}
-      {/*)}*/}
-
-      {/*/!* ── Option B: Singles & EPs ───────────────────────────────────────────── *!/*/}
-      {/*{singles.length > 0 && (*/}
-      {/*  <section className="mb-10">*/}
-      {/*    <h2 className="text-sm font-bold text-text-primary uppercase tracking-wider mb-4">*/}
-      {/*      Singles & EPs*/}
-      {/*      <span className="ml-2 text-text-muted font-normal normal-case text-xs">*/}
-      {/*        — {singles.length} releases*/}
-      {/*      </span>*/}
-      {/*    </h2>*/}
-      {/*    <SinglesSection tracks={singles} />*/}
-      {/*  </section>*/}
-      {/*)}*/}
-
-      {/* ── Discography (Expandable Album Cards) ───────────────────────────── */}
+      {/* Discography */}
       {albumsWithTracks.length > 0 && (
         <section className="mb-10">
           <h2 className="text-sm font-bold text-text-primary uppercase tracking-wider mb-4">
@@ -597,78 +359,9 @@ export default function ArtistDetailPage() {
         </section>
       )}
 
-      {/* ── Songs Table ──────────────────────────────────────────────────────── */}
-      {/*{allTracks.length < 0 && (*/}
-      {/*  <div className="mt-8 mb-12">*/}
-      {/*    <div className="flex justify-between items-center mb-6">*/}
-      {/*      <h2 className="text-2xl font-bold text-text-primary">All Songs</h2>*/}
-      {/*      <button*/}
-      {/*        onClick={() => setShowAddForm(!showAddForm)}*/}
-      {/*        className="text-xs bg-accent/10 text-accent px-3 py-1 rounded-full hover:bg-accent hover:text-white transition-all font-bold"*/}
-      {/*      >*/}
-      {/*        {showAddForm ? 'Cancel' : '+ Add New Track'}*/}
-      {/*      </button>*/}
-      {/*    </div>*/}
 
-      {/*    /!* Inline Add Form *!/*/}
-      {/*    {showAddForm && (*/}
-      {/*      <div className="bg-bg-card border border-accent/20 p-4 rounded-card mb-6 flex gap-4 items-end animate-in fade-in slide-in-from-top-2">*/}
-      {/*        <div className="flex-1">*/}
-      {/*          <label className="block text-[10px] uppercase font-bold text-text-muted mb-1">Track Name</label>*/}
-      {/*          <input*/}
-      {/*            className="w-full bg-bg-primary border border-border-col rounded p-2 text-sm outline-none focus:border-accent text-text-primary"*/}
-      {/*            placeholder="e.g. Willow"*/}
-      {/*            value={newTrack.name}*/}
-      {/*            onChange={e => setNewTrack({ ...newTrack, name: e.target.value })}*/}
-      {/*          />*/}
-      {/*        </div>*/}
-      {/*        <div className="flex-1">*/}
-      {/*          <label className="block text-[10px] uppercase font-bold text-text-muted mb-1">Album Name (Optional)</label>*/}
-      {/*          <input*/}
-      {/*            className="w-full bg-bg-primary border border-border-col rounded p-2 text-sm outline-none focus:border-accent text-text-primary"*/}
-      {/*            placeholder="e.g. Evermore"*/}
-      {/*            value={newTrack.album}*/}
-      {/*            onChange={e => setNewTrack({ ...newTrack, album: e.target.value })}*/}
-      {/*          />*/}
-      {/*        </div>*/}
-      {/*        <button*/}
-      {/*          onClick={handleAddTrack}*/}
-      {/*          className="bg-accent text-bg-primary px-6 py-2 rounded font-bold text-sm h-[38px] hover:bg-accent-hover transition-colors"*/}
-      {/*        >*/}
-      {/*          Save*/}
-      {/*        </button>*/}
-      {/*      </div>*/}
-      {/*    )}*/}
-
-
-      {/*{allTracks.length > 0 && (*/}
-      {/*  <section className="mb-12">*/}
-      {/*    <div className="flex items-center justify-between mb-6">*/}
-      {/*      <h2 className="text-2xl font-bold text-text-primary">All Songs</h2>*/}
-      {/*      <button*/}
-      {/*        onClick={() => setShowAddSongs(true)}*/}
-      {/*        className="text-xs font-bold text-accent hover:underline"*/}
-      {/*      >*/}
-      {/*        + Add New Song*/}
-      {/*      </button>*/}
-      {/*    </div>*/}
-      {/*    <div className="bg-bg-card border border-border-col rounded-card p-4">*/}
-      {/*      <SortableTable*/}
-      {/*        tracks={allTracks}*/}
-      {/*        onEdit={(t) => {*/}
-      {/*          setEditingTrack(t);*/}
-      {/*          setNewAlbumName(t.album_name || "");*/}
-      {/*        }}*/}
-      {/*      />*/}
-      {/*    </div>*/}
-      {/*  </section>*/}
-      {/*)}*/}
-      {/*</div>*/}
-      {/*)}*/}
-
-      {/* ── Songs Section ──────────────────────────────────────────────────────── */}
+      {/* Songs Table */}
       <section className="mt-8 mb-12">
-        {/* Header: Title and the primary Modal Button */}
         <div className="flex justify-between items-center mb-6">
           <h2 className="text-2xl font-bold text-text-primary">All Songs</h2>
           <button
@@ -703,8 +396,10 @@ export default function ArtistDetailPage() {
             onClose={() => setShowAddSongs(false)}
             onSuccess={async () => {
               setShowAddSongs(false);
+
               const res = await getArtistDetail(slug);
-              setArtist(res.data); // Refresh data from backend
+              setArtist(res.data);
+
               toast.success("Knowledge Graph updated!");
             }}
           />
@@ -712,7 +407,7 @@ export default function ArtistDetailPage() {
       </section>
 
 
-      {/* ── Similar Artists ───────────────────────────────────────────────────── */}
+      {/* Similar Artists */}
       {recs?.similar_artists?.length > 0 && (
         <section className="mb-10">
           <h2 className="text-sm font-bold text-text-primary uppercase tracking-wider mb-4">Similar Artists</h2>
@@ -735,7 +430,8 @@ export default function ArtistDetailPage() {
         </section>
       )}
 
-      {/* ── Recommendations ─────────────────────────────────────────────────── */}
+
+      {/* Recommendations */}
       {(recs?.recommended_tracks || recs?.you_may_also_like)?.length > 0 && (
         <section className="mb-10">
           <h2 className="text-sm font-bold text-text-primary uppercase tracking-wider mb-4">You May Also Like</h2>
@@ -767,7 +463,8 @@ export default function ArtistDetailPage() {
         </section>
       )}
 
-      {/* ── Modals ───────────────────────────────────────────────────────────── */}
+
+      {/* Modals */}
       <AnimatePresence>
         {editingTrack && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">

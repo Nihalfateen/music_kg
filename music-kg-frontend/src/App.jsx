@@ -1,4 +1,5 @@
 import { Routes, Route } from 'react-router-dom'
+
 import Navbar from './components/layout/Navbar'
 import { ErrorBoundary } from './components/common/ErrorBoundary'
 import { Suspense, lazy } from 'react'
@@ -11,7 +12,6 @@ const AlbumDetailPage   = lazy(() => import('./pages/AlbumDetailPage'))
 const TimelinePage      = lazy(() => import('./pages/TimelinePage'))
 const GraphExplorerPage = lazy(() => import('./pages/GraphExplorerPage'))
 const AnalyticsPage     = lazy(() => import('./pages/AnalyticsPage'))
-// const SPARQLEditorPage  = lazy(() => import('./pages/SPARQLEditorPage'))
 
 function NotFound() {
   return (
@@ -41,7 +41,6 @@ export default function App() {
               <Route path="/timeline"    element={<TimelinePage />} />
               <Route path="/graph"       element={<GraphExplorerPage />} />
               <Route path="/analytics"   element={<AnalyticsPage />} />
-              {/*<Route path="/sparql"      element={<SPARQLEditorPage />} />*/}
               <Route path="*"            element={<NotFound />} />
             </Routes>
           </Suspense>

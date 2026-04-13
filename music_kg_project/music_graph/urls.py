@@ -9,10 +9,9 @@ urlpatterns = [
     path('songs/bulk-create/', views.api_create_songs_bulk, name='api_create_songs_bulk'),
     path('tracks/update-album/', views.update_album_view, name='update_album_view'),
     path('albums/update-year/', views.update_album_year, name='update_album_year'),
-    # path('tracks/add/', views.add_track_view, name='add_track_view'),
     path('tracks/delete/', views.delete_track_view, name='delete-track'),
 
-    # Artists — use re_path to support special chars like * & + in artist names
+    # Artists
     path('artists/', views.ArtistListView.as_view(), name='artist-list'),
     re_path(r'^artists/(?P<slug>.+)/$', views.ArtistDetailView.as_view(), name='artist-detail'),
 
@@ -23,35 +22,25 @@ urlpatterns = [
     path('tracks/', views.TrackListView.as_view(), name='track-list'),
 
     # Search
-    path('search/',
-         views.SearchView.as_view(),           name='search'),
+    path('search/', views.SearchView.as_view(), name='search'),
 
     # SPARQL
-    path('sparql/',
-         views.SPARQLView.as_view(),         name='sparql'),
-    path('sparql/update/',
-         views.SPARQLUpdateView.as_view(),   name='sparql-update'),
-    path('sparql-templates/',
-         views.SPARQLTemplatesView.as_view(), name='sparql-templates'),
+    path('sparql/', views.SPARQLView.as_view(), name='sparql'),
+    path('sparql/update/', views.SPARQLUpdateView.as_view(), name='sparql-update'),
+    path('sparql-templates/', views.SPARQLTemplatesView.as_view(), name='sparql-templates'),
 
     # Stats
-    path('stats/',
-         views.StatsView.as_view(),            name='stats'),
+    path('stats/', views.StatsView.as_view(), name='stats'),
 
     # Timeline
-    path('timeline/',
-         views.TimelineView.as_view(), name='timeline'),
-    re_path(r'^timeline/(?P<genre>.+)/$',
-            views.TimelineView.as_view(), name='timeline-genre'),
+    path('timeline/', views.TimelineView.as_view(), name='timeline'),
+    re_path(r'^timeline/(?P<genre>.+)/$', views.TimelineView.as_view(), name='timeline-genre'),
 
     # Analytics
-    path('genre-landscape/',      views.GenreLandscapeView.as_view(),
-         name='genre-landscape'),
-    path('audio-distribution/',   views.AudioDistributionView.as_view(),
-         name='audio-distribution'),
+    path('genre-landscape/', views.GenreLandscapeView.as_view(), name='genre-landscape'),
+    path('audio-distribution/', views.AudioDistributionView.as_view(), name='audio-distribution'),
 
     # Recommendations
-    re_path(r'^recommendations/(?P<slug>.+)/$',
-            views.RecommendationsView.as_view(), name='recommendations'),
+    re_path(r'^recommendations/(?P<slug>.+)/$', views.RecommendationsView.as_view(), name='recommendations'),
 
 ]

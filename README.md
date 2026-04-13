@@ -1,6 +1,6 @@
 # 🎵 Music Knowledge Graph
 
-> A full-stack semantic web application built on RDF, SPARQL, Django & React
+> A full-stack semantic web application featuring a persistent RDF store, SPARQL 1.1 CRUD operations, and real-time audio analytics.
 
 ![Python](https://img.shields.io/badge/Python-3.9-blue) ![Django](https://img.shields.io/badge/Django-4.2-green) ![React](https://img.shields.io/badge/React-18-61dafb) ![rdflib](https://img.shields.io/badge/rdflib-SPARQL-orange)
 
@@ -63,6 +63,7 @@ music_kg/
 
 - Python 3.9+
 - Node.js 18+ and npm
+- GraphDB installed and running on port 7200
 - A virtual environment (recommended)
 
 ### 1 — Generate the RDF graph
@@ -105,33 +106,37 @@ npm run dev
 
 Base URL: `http://localhost:8000/api` — all responses are JSON.
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `GET` | `/artists/` | Paginated artist list — `?search=` `?genre=` `?page=` `?page_size=` |
-| `GET` | `/artists/<slug>/` | Full artist profile with albums, top tracks, audio features |
-| `GET` | `/albums/<slug>/` | Album detail with full track listing |
-| `GET` | `/tracks/` | Track list — `?search=` `?genre=` `?year_min=` `?year_max=` `?energy_min=` |
-| `GET` | `/search/?q=` | Full-text search across artists, albums and tracks (in-memory, < 50 ms) |
-| `POST` | `/sparql/` | Execute raw SPARQL SELECT — body: `{ "query": "SELECT ..." }` |
-| `GET` | `/stats/` | Graph statistics (triple count, entity counts) |
-| `GET` | `/timeline/` | Per-year aggregate: track count, avg energy, top genre |
-| `GET` | `/timeline/<genre>/` | Decade-level genre evolution — energy, danceability, valence |
-| `GET` | `/genre-landscape/` | Genre scatter data for analytics view |
-| `GET` | `/audio-distribution/` | Histogram data for danceability, energy, valence, tempo |
-| `GET` | `/sparql-templates/` | Saved SPARQL query templates |
-| `GET` | `/recommendations/<slug>/` | Similar artists + recommended tracks for a given artist |
-
+| Method  | Endpoint                   | Description |
+|---------|----------------------------|-------------|
+| `GET`   | `/artists/`                | Paginated artist list — `?search=` `?genre=` `?page=` `?page_size=` |
+| `GET`   | `/artists/<slug>/`         | Full artist profile with albums, top tracks, audio features |
+| `GET`   | `/albums/<slug>/`          | Album detail with full track listing |
+| `GET`   | `/tracks/`                 | Track list — `?search=` `?genre=` `?year_min=` `?year_max=` `?energy_min=` |
+| `GET`   | `/search/?q=`              | Full-text search across artists, albums and tracks (in-memory, < 50 ms) |
+| `POST`  | `/sparql/`                 | Execute raw SPARQL SELECT — body: `{ "query": "SELECT ..." }` |
+| `GET`   | `/stats/`                  | Graph statistics (triple count, entity counts) |
+| `GET`   | `/timeline/`               | Per-year aggregate: track count, avg energy, top genre |
+| `GET`   | `/timeline/<genre>/`       | Decade-level genre evolution — energy, danceability, valence |
+| `GET`   | `/genre-landscape/`        | Genre scatter data for analytics view |
+| `GET`   | `/audio-distribution/`     | Histogram data for danceability, energy, valence, tempo |
+| `GET`   | `/sparql-templates/`       | Saved SPARQL query templates |
+| `GET`   | `/recommendations/<slug>/` | Similar artists + recommended tracks for a given artist |
+| `POST`	 | `/artists/create/`	        | Create a new Artist node|
+| `POST`	 | `/songs/bulk-create/`	     | Bulk Insert tracks & albums for an artist|
+| `POST`	 | `/tracks/update-album/`	   | Move a track & trigger garbage collection|
+| `POST`	 | `/albums/update-year/`	    | Update release year via DELETE/INSERT|
+| `POST`	 | `/tracks/delete/`	         | Surgical Delete of a track node|
 ---
 
 ## Features
 
-### 🔍 Search
+### ➝ Search
 Full-text search is backed by a 65,383-entry in-memory index built from the CSV at startup (< 1 s). Each keystroke scans the index in Python — results return in under 50 ms with no SPARQL overhead.
 
-### 🎤 Artist Profiles
+### ➝ Artist Profiles
 Each artist page shows genre badges, an audio radar chart (energy · danceability · valence · tempo · loudness), a sortable top-tracks table, and a discography split into real albums (2+ tracks) and singles.
 
-### 🤝 Recommendation Engine
+### ➝ Recommendation Engine
 Implemented in `similarity.py` using two algorithms combined at a **60/40 ratio**:
 
 - **Cosine similarity** on a 5-dimensional audio feature vector (energy, danceability, valence, normalised tempo, normalised loudness)
@@ -139,10 +144,8 @@ Implemented in `similarity.py` using two algorithms combined at a **60/40 ratio*
 
 The full artist-×-artist matrix is pre-computed on startup and cached with `lru_cache` for O(1) lookups at request time.
 
-### ⚡ SPARQL Editor
-A live editor at `/sparql` lets you run arbitrary SPARQL 1.1 SELECT queries against the full knowledge graph and see results in a paginated table.
 
-### 📈 Timeline & Analytics
+### ➝ Timeline & Analytics
 The Timeline page charts tracks released per year with avg energy and danceability overlays. The Analytics page shows genre scatter plots, audio-feature histograms, and genre evolution across decades.
 
 ---
@@ -221,12 +224,14 @@ LIMIT 10
 - **Dataset structure** — the source is playlist-derived, so most "albums" contain only one track. The UI separates real albums (2+ tracks) from singles.
 - **Cold start** — the similarity engine pre-computes a ~10k × 10k matrix in memory (~9 s). The server is unresponsive to recommendation requests until this completes.
 - **No persistent RDF store** — the graph is reloaded from the NT file on every server restart.
-
+- **Analytics Cold Start** — User-created artists/tracks do not currently have pre-computed audio analytics or popularity scores.
 ---
 
 ## Licence
 
-Released for educational and research purposes. The Spotify dataset is sourced from Kaggle (public domain).
+Released for educational and research purposes.
+
+The Spotify dataset is sourced from Kaggle (public domain) : https://www.kaggle.com/datasets/joebeachcapital/30000-spotify-songs
 
 ---
 

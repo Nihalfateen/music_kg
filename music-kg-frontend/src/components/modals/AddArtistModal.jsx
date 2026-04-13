@@ -14,10 +14,9 @@ export default function AddArtistModal({ initialName, onClose, onSuccess }) {
     try {
       const res = await createArtist({ name, genre });
       toast.success(`${name} added!`);
-      onSuccess(res.data.slug); // Normal success path
+      onSuccess(res.data.slug);
     } catch (err) {
       if (err.response?.status === 409) {
-        // The backend sends the slug even on a 409 error
         const existingSlug = err.response.data.slug;
 
         toast.success("Artist already exists! Redirecting...");

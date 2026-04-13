@@ -7,6 +7,7 @@ import {
 } from 'recharts'
 import { motion } from 'framer-motion'
 import toast from 'react-hot-toast'
+
 import { getTimeline, getGenreEvolution } from '../api'
 import { PageSkeleton } from '../components/common/LoadingSkeleton'
 import { hashColor, formatNumber } from '../utils/helpers'

@@ -10,7 +10,6 @@ const NAV = [
   { to: '/timeline',  label: 'Timeline'   },
   { to: '/analytics', label: 'Analytics'  },
   { to: '/graph',     label: 'Graph'      },
-  // { to: '/sparql',    label: 'SPARQL'     },
 ]
 
 export default function Navbar() {

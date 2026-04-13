@@ -12,7 +12,7 @@ class MusicGraphConfig(AppConfig):
     def ready(self):
         """
         Called once when Django finishes loading.
-        Initialises the RDF singleton so all views share one in-memory graph.
+        Initializes the RDF singleton so all views share one in-memory graph.
         """
         # Avoid running during management commands like migrate / shell
         import sys

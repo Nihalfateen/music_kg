@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import toast from 'react-hot-toast'
+
 import { getArtists, getGenreLandscape } from '../api'
 import { hashColor, formatNumber } from '../utils/helpers'
 

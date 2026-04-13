@@ -5,6 +5,7 @@ import {
 } from 'recharts'
 import { motion } from 'framer-motion'
 import toast from 'react-hot-toast'
+
 import { getGenreLandscape, getAudioDistribution } from '../api'
 import { hashColor, formatNumber } from '../utils/helpers'
 import { PageSkeleton } from '../components/common/LoadingSkeleton'
@@ -55,7 +56,7 @@ export default function AnalyticsPage() {
     .sort((a, b) => (b.track_count || 0) - (a.track_count || 0))
     .slice(0, 15)
 
-  // Decade comparison data (derived from landscape — approximated for demo)
+  // Decade comparison data
   const decadeData = [
     { decade: '1980s', avg_energy: 0.61, avg_danceability: 0.58, avg_valence: 0.55 },
     { decade: '1990s', avg_energy: 0.63, avg_danceability: 0.60, avg_valence: 0.50 },
